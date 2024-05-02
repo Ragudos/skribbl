@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="http-equiv" content="X-UA-Compatible" content="ie=edge">
+        <link rel="stylesheet" href="index.css">
+        <title>Skribbl</title>
+    </head>
+    <body>
+        <noscript>
+            <h1>Skribbl requires JavaScript to run.</h1>
+        </noscript>
+        <div id="lobby">
+            <div>
+                <form id="lobby-form" action novalidate>
+                    <input
+                        type="text"
+                        id="display-name"
+                        name="displayName"
+                        placeholder="Display Name"
+                        minlength="3"
+                        maxlength="20"
+                        required />
+                    <input
+                        type="hidden"
+                        value="{{roomId}}"
+                        id="room-id"
+                        name="roomId"
+                        readonly />
+                </form>
+                <button type="button" id="play-btn">
+                    Play
+                </button>
+                <button type="button" id="create-private-room-btn">
+                    Create Private Room
+                </button>
+            </div>
+        </div>
+        <script src="index.js" type="module"></script>
+    </body>
+</html>

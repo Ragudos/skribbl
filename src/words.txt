@@ -1,0 +1,47 @@
+book
+bed
+mountain
+mountain range
+key
+island
+tree
+boat
+car
+paper
+pencil
+quill
+feather
+shark
+fish
+scoreboard
+surfboard
+chess
+reindeer
+lion
+tiger
+ballpen
+basketball
+football
+keyboard
+mouse
+monitor
+motherboard
+punching bag
+camera
+speaker
+microphone
+box
+square
+kettle bells
+coconut
+apple
+banana
+electricity
+electric fan
+aircon
+inverter
+picture frame
+media literacy
+youtube
+gallery
+seashore
