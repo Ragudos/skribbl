@@ -1,3 +1,4 @@
+use rand::Rng;
 use rocket::futures::{SinkExt, StreamExt};
 use rocket::tokio;
 
@@ -86,30 +87,425 @@ async fn spawn_timer<'st>(
     ()
 }
 
+fn get_version_or_error_on_mismatch(
+    data: &Vec<u8>,
+) -> Result<&u8, Box<dyn std::error::Error>> {
+    if data.len() < 1 {
+        return Err("Invalid data length".into());
+    }
+
+    let version = &data[0];
+
+    if *version != BINARY_PROTOCOL_VERSION {
+        return Err("Invalid protocol version".into());
+    }
+
+    Ok(version)
+}
+
+fn get_event_type_or_error_on_mismatch(
+    data: &Vec<u8>,
+) -> Result<model::WebSocketEvents, Box<dyn std::error::Error>> {
+    if data.len() < 2 {
+        return Err("Invalid data length".into());
+    }
+
+    Ok(data[1].try_into()?)
+}
+
 async fn create_reader<'st>(
+    user_id: String,
     room_id: String,
     messages: &'st rocket::State<tokio::sync::broadcast::Sender<WebSocketMessage>>,
     ticker: &'st rocket::State<tokio::sync::broadcast::Sender<model::WebSocketTick>>,
     game_state: &'st rocket::State<model::GameState>,
     mut stream: rocket::futures::stream::SplitStream<ws::stream::DuplexStream>,
+    sink: std::sync::Arc<
+        rocket::futures::lock::Mutex<
+            rocket::futures::stream::SplitSink<ws::stream::DuplexStream, ws::Message>,
+        >,
+    >,
 ) -> Result<(), Box<dyn std::error::Error>> {
     while let Some(message) = stream.next().await {
         let message = message?;
 
-        spawn_timer(room_id.clone(), game_state, ticker).await;
+        match &message {
+            ws::Message::Close(close_frames) => {
+                if let Some(close_frames) = &close_frames {
+                    println!(
+                        "Closing websocket: \n\tReason{:?} Code: {:?}",
+                        close_frames.reason, close_frames.code
+                    );
+                }
 
-        let _ = messages.send(WebSocketMessage {
-            room_id: room_id.clone(),
-            message,
-        });
+                let mut users = game_state.users.lock().await;
+                let mut rooms = game_state.rooms.lock().await;
+
+                let num_of_users_in_room = users.iter().fold(0, |acc, user| {
+                    if user.room_id == room_id {
+                        return acc + 1;
+                    }
+
+                    acc
+                });
+
+                if num_of_users_in_room == 0 {
+                    unreachable!("A room with no users should have been deleted")
+                }
+
+                if num_of_users_in_room == 1 {
+                    let Some(user_idx) = users.iter().position(|u| u.id == user_id)
+                    else {
+                        unreachable!("User should exist when leaving the room.");
+                    };
+                    let Some(room_idx) = rooms.iter().position(|r| r.id == room_id)
+                    else {
+                        unreachable!("Room should exist when a user leaves.");
+                    };
+
+                    users.remove(user_idx);
+                    rooms.remove(room_idx);
+                } else if num_of_users_in_room == 2 {
+                    let Some(room) = rooms.iter_mut().find(|r| r.id == room_id) else {
+                        unreachable!("Room should exist when a user leaves.");
+                    };
+
+                    match &room.state {
+                        &model::RoomState::Playing { .. } => {
+                            if let Some(user) = users.iter_mut().find(|u| {
+                                u.room_id == room_id && u.id != user_id && u.has_drawn
+                            }) {
+                                user.has_drawn = false;
+                            }
+
+                            room.state = model::RoomState::Waiting;
+                        }
+                        _ => {}
+                    }
+                }
+
+                let Some(room) = rooms.iter_mut().find(|r| r.id == room_id) else {
+                    unreachable!("Room should exist when a user leaves.");
+                };
+                let Some(user_pos) = users.iter().position(|u| u.id == user_id) else {
+                    unreachable!("User should exist when leaving the room.");
+                };
+
+                users.remove(user_pos);
+
+                let user_id_bytes = user_id.as_bytes();
+                let user_id_bytes_length = user_id_bytes.len();
+                let mut message = Vec::with_capacity(2 + 1 + 1 + user_id_bytes_length);
+
+                message.push(BINARY_PROTOCOL_VERSION);
+                message.push(
+                    model::WebSocketEvents::UserLeft
+                        .try_into()
+                        .unwrap(),
+                );
+                message.push(1);
+                message.push(user_id_bytes_length as u8);
+
+                message.extend(user_id_bytes);
+
+                let _ = messages.send(model::WebSocketMessage::new(
+                    None,
+                    room_id.clone(),
+                    ws::Message::Binary(message),
+                ));
+
+                if user_id == room.host_id {
+                    // We already removed the user who opened this connection, so
+                    // we can just find the next possible user in the room who can be the host.
+                    let Some(new_host) = users.iter().find(|u| u.id == room.host_id)
+                    else {
+                        unreachable!("There should be at least one user in the room.");
+                    };
+                    let user_id = new_host.id.clone();
+                    let user_id_bytes = user_id.as_bytes();
+                    let user_id_bytes_length = user_id_bytes.len();
+
+                    let mut message =
+                        Vec::with_capacity(2 + 1 + 1 + user_id_bytes_length);
+
+                    message.push(BINARY_PROTOCOL_VERSION);
+                    message.push(
+                        model::WebSocketEvents::NewHost
+                            .try_into()
+                            .unwrap(),
+                    );
+                    message.push(1);
+                    message.push(user_id_bytes_length as u8);
+                    message.extend(user_id_bytes);
+
+                    room.host_id = user_id;
+
+                    let _ = messages.send(model::WebSocketMessage::new(
+                        None,
+                        room_id.clone(),
+                        ws::Message::Binary(message),
+                    ));
+
+                    break;
+                }
+
+                (|| match &mut room.state {
+                    model::RoomState::Playing {
+                        user_to_draw,
+                        current_round,
+                        time_left,
+                        current_word,
+                    } => {
+                        if user_id != *user_to_draw {
+                            return;
+                        }
+
+                        if users
+                            .iter()
+                            .all(|user| user.room_id == room.id && user.has_drawn)
+                        {
+                            if *current_round == room.max_rounds {
+                                room.state = model::RoomState::Finished;
+
+                                let message = vec![
+                                    BINARY_PROTOCOL_VERSION,
+                                    model::WebSocketEvents::EndGame.try_into().expect(
+                                        "EndGame event should be transformable to u8",
+                                    ),
+                                ];
+
+                                let _ = messages.send(model::WebSocketMessage::new(
+                                    None,
+                                    room_id.clone(),
+                                    ws::Message::Binary(message),
+                                ));
+
+                                return;
+                            }
+
+                            *current_round += 1;
+
+                            users.iter_mut().for_each(|user| {
+                                if user.room_id == room.id {
+                                    user.has_drawn = false;
+                                }
+                            });
+
+                            return;
+                        }
+
+                        let Some(user_left_to_draw) = users
+                            .iter_mut()
+                            .find(|u| u.room_id == room.id && !u.has_drawn)
+                        else {
+                            unreachable!(
+                                "There should be at least one user who hasn't drawn yet."
+                            );
+                        };
+
+                        user_left_to_draw.has_drawn = true;
+
+                        let user_left_to_draw_id = user_left_to_draw.id.clone();
+                        *user_to_draw = user_left_to_draw_id.clone();
+
+                        let word = utils::get_random_word().to_string();
+                        let duration = 60;
+
+                        *current_word = word.clone();
+                        *time_left = duration.clone();
+
+                        let user_left_to_draw_id_bytes = user_left_to_draw_id.as_bytes();
+                        let user_left_to_draw_id_bytes_length =
+                            user_left_to_draw_id_bytes.len();
+                        let current_word_bytes = word.as_bytes();
+                        let current_word_bytes_length = current_word_bytes.len();
+                        let time_left_bytes = vec![duration.clone()];
+                        let time_left_bytes_length = time_left_bytes.len();
+
+                        let mut message = Vec::with_capacity(
+                            2 + 1
+                                + 1
+                                + user_left_to_draw_id_bytes_length
+                                + 1
+                                + 1
+                                + current_word_bytes_length
+                                + 1
+                                + 1
+                                + time_left_bytes_length,
+                        );
+
+                        message.push(BINARY_PROTOCOL_VERSION);
+                        message.push(
+                            model::WebSocketEvents::NewUserToDraw
+                                .try_into()
+                                .expect(
+                                    "NewUserToDraw event should be transformable to u8",
+                                ),
+                        );
+                        message.push(1);
+                        message.push(user_left_to_draw_id_bytes_length as u8);
+                        message.extend(user_left_to_draw_id_bytes);
+                        message.push(1);
+                        message.push(current_word_bytes_length as u8);
+                        message.extend(current_word_bytes);
+                        message.push(1);
+                        message.push(time_left_bytes_length as u8);
+                        message.extend(time_left_bytes);
+
+                        let _ = messages.send(model::WebSocketMessage::new(
+                            None,
+                            room_id.clone(),
+                            ws::Message::Binary(message),
+                        ));
+                    }
+                    _ => {}
+                })();
+
+                break;
+            }
+            _ => {}
+        }
+
+        let data = message.into_data();
+
+        get_version_or_error_on_mismatch(&data)?;
+
+        let event_type = get_event_type_or_error_on_mismatch(&data)?;
+
+        match event_type {
+            model::WebSocketEvents::StartGame => {
+                let mut users = game_state.users.lock().await;
+                let mut users_in_room = users
+                    .iter_mut()
+                    .filter(|u| u.room_id == room_id)
+                    .collect::<Vec<&mut model::User>>();
+                let num_of_users_in_room = users_in_room.len();
+
+                if num_of_users_in_room == 0 {
+                    unreachable!("A room with no users should have been deleted");
+                } else if num_of_users_in_room == 1 {
+                    let mut sink = sink.lock().await;
+
+                    let error_msg = "Not enough players to start the game";
+                    let error_msg_bytes = error_msg.as_bytes();
+                    let error_msg_bytes_length = error_msg_bytes.len();
+
+                    let mut message =
+                        Vec::with_capacity(2 + 1 + 1 + error_msg_bytes_length);
+
+                    message.push(BINARY_PROTOCOL_VERSION);
+                    message.push(model::WebSocketEvents::Error.try_into().unwrap());
+                    message.push(1);
+                    message.push(error_msg_bytes_length as u8);
+                    message.extend(error_msg_bytes);
+
+                    sink.send(ws::Message::Binary(message)).await?;
+
+                    continue;
+                }
+
+                let mut rooms = game_state.rooms.lock().await;
+                let Some(room) = rooms.iter_mut().find(|r| r.id == room_id) else {
+                    unreachable!("Room should exist when sending the StartGame event.");
+                };
+
+                let random_idx = rand::thread_rng().gen_range(0..num_of_users_in_room);
+                let user_to_draw = &mut *users_in_room[random_idx];
+
+                user_to_draw.has_drawn = true;
+
+                let user_to_draw_id = user_to_draw.id.clone();
+                let word = utils::get_random_word().to_string();
+                let duration = 60;
+
+                room.state = model::RoomState::Playing {
+                    user_to_draw: user_to_draw_id.clone(),
+                    time_left: duration.clone(),
+                    current_round: 1,
+                    current_word: word.clone(),
+                };
+
+                let mut sink = sink.lock().await;
+
+                let user_to_draw_id_bytes = user_to_draw_id.as_bytes();
+                let user_to_draw_id_bytes_length = user_to_draw_id_bytes.len();
+                let current_word_bytes = word.as_bytes();
+                let current_word_bytes_length = current_word_bytes.len();
+                let time_left_bytes = vec![duration.clone()];
+                let time_left_bytes_length = time_left_bytes.len();
+
+                let mut message = Vec::with_capacity(
+                    2 + 1
+                        + 1
+                        + user_to_draw_id_bytes_length
+                        + 1
+                        + 1
+                        + current_word_bytes_length
+                        + 1
+                        + 1
+                        + time_left_bytes_length,
+                );
+
+                message.push(BINARY_PROTOCOL_VERSION);
+                message.push(
+                    model::WebSocketEvents::StartGame
+                        .try_into()
+                        .unwrap(),
+                );
+                message.push(1);
+                message.push(user_to_draw_id_bytes_length as u8);
+                message.extend(user_to_draw_id_bytes);
+                message.push(1);
+                message.push(current_word_bytes_length as u8);
+                message.extend(current_word_bytes);
+                message.push(1);
+                message.push(time_left_bytes_length as u8);
+                message.extend(time_left_bytes);
+
+                sink.send(ws::Message::Binary(message)).await?;
+
+                // We only want to send the raw current word to the current user who's
+                // drawing. We don't want to send the current word to the other users.
+                let _ = messages.send(model::WebSocketMessage::new(
+                    Some(user_to_draw_id.clone()),
+                    room_id.clone(),
+                    ws::Message::Binary(data),
+                ));
+
+                spawn_timer(room_id.clone(), game_state, ticker).await;
+            }
+            model::WebSocketEvents::UserJoined => {
+                let _ = messages.send(model::WebSocketMessage::new(
+                    Some(user_id.clone()),
+                    room_id.clone(),
+                    ws::Message::Binary(data),
+                ));
+            }
+            model::WebSocketEvents::UserLeft => {
+                let _ = messages.send(model::WebSocketMessage::new(
+                    None,
+                    room_id.clone(),
+                    ws::Message::Binary(data),
+                ));
+            }
+            _ => {
+                let _ = messages.send(model::WebSocketMessage::new(
+                    None,
+                    room_id.clone(),
+                    ws::Message::Binary(data),
+                ));
+            }
+        }
     }
 
     Ok(())
 }
 
 async fn create_room_writer<'st>(
+    user_id: String,
     room_id: String,
     messages: &'st rocket::State<tokio::sync::broadcast::Sender<WebSocketMessage>>,
+    game_state: &'st rocket::State<model::GameState>,
     sink: std::sync::Arc<
         rocket::futures::lock::Mutex<
             rocket::futures::stream::SplitSink<ws::stream::DuplexStream, ws::Message>,
@@ -119,11 +515,93 @@ async fn create_room_writer<'st>(
     let mut receiver = messages.subscribe();
 
     while let Some(ws_message) = receiver.recv().await.ok() {
-        if ws_message.room_id != room_id {
+        if ws_message.room_id != room_id
+            || ws_message.user_id_to_exclude.as_ref() == Some(&user_id)
+        {
             continue;
         }
 
-        sink.lock().await.send(ws_message.message).await?;
+        let message = ws_message.message;
+        let data = message.into_data();
+
+        get_version_or_error_on_mismatch(&data)?;
+
+        let event_type = get_event_type_or_error_on_mismatch(&data)?;
+
+        match event_type {
+            model::WebSocketEvents::StartGame => {
+                let rooms = game_state.rooms.lock().await;
+                let Some(room) = rooms.iter().find(|r| r.id == room_id) else {
+                    unreachable!("Room should exist when sending the StartGame event.");
+                };
+
+                match &room.state {
+                    model::RoomState::Playing {
+                        user_to_draw,
+                        current_word,
+                        time_left,
+                        ..
+                    } => {
+                        let user_to_draw_bytes = user_to_draw.as_bytes();
+                        let user_to_draw_bytes_length = user_to_draw_bytes.len();
+                        let current_word_transformed = current_word
+                            .chars()
+                            .map(|c| {
+                                if c.is_whitespace() {
+                                    return ' ';
+                                }
+
+                                '*'
+                            })
+                            .collect::<String>();
+                        let current_word_bytes = current_word_transformed.as_bytes();
+                        let current_word_bytes_length = current_word_bytes.len();
+                        let time_left_bytes = vec![time_left.clone()];
+                        let time_left_bytes_length = time_left_bytes.len();
+
+                        let mut sink = sink.lock().await;
+
+                        let mut message = Vec::with_capacity(
+                            2 + 1
+                                + 1
+                                + user_to_draw_bytes_length
+                                + 1
+                                + 1
+                                + current_word_bytes_length
+                                + 1
+                                + 1
+                                + time_left_bytes_length,
+                        );
+
+                        message.push(BINARY_PROTOCOL_VERSION);
+                        message.push(
+                            model::WebSocketEvents::StartGame
+                                .try_into()
+                                .unwrap(),
+                        );
+                        message.push(1);
+                        message.push(user_to_draw_bytes_length as u8);
+                        message.extend(user_to_draw_bytes);
+                        message.push(1);
+                        message.push(current_word_bytes_length as u8);
+                        message.extend(current_word_bytes);
+                        message.push(1);
+                        message.push(time_left_bytes_length as u8);
+                        message.extend(time_left_bytes);
+
+                        sink.send(ws::Message::Binary(message)).await?;
+                    }
+                    _ => {
+                        unreachable!("Room should be in Playing state when sending the StartGame event.");
+                    }
+                }
+            }
+            _ => {
+                let mut sink = sink.lock().await;
+
+                sink.send(ws::Message::Binary(data)).await?;
+            }
+        }
     }
 
     Ok(())
@@ -176,10 +654,22 @@ pub async fn ws_endpoint<'st>(
             let (sink, stream) = duplex.split();
             let sink = std::sync::Arc::new(rocket::futures::lock::Mutex::new(sink));
 
-            let reader =
-                create_reader(user.room_id.clone(), messages, ticker, game_state, stream);
-            let room_writer =
-                create_room_writer(user.room_id.clone(), messages, sink.clone());
+            let reader = create_reader(
+                user.id.clone(),
+                user.room_id.clone(),
+                messages,
+                ticker,
+                game_state,
+                stream,
+                sink.clone(),
+            );
+            let room_writer = create_room_writer(
+                user.id.clone(),
+                user.room_id.clone(),
+                messages,
+                game_state,
+                sink.clone(),
+            );
             let timer = create_timer(user.room_id.clone(), ticker, sink.clone());
 
             // Wait for either the readers or writers to finish (They stop executing).

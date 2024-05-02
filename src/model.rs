@@ -86,8 +86,23 @@ impl User {
 
 #[derive(Clone)]
 pub struct WebSocketMessage {
+    pub user_id_to_exclude: Option<String>,
     pub room_id: String,
     pub message: ws::Message,
+}
+
+impl WebSocketMessage {
+    pub fn new(
+        user_id_to_exclude: Option<String>,
+        room_id: String,
+        message: ws::Message,
+    ) -> Self {
+        Self {
+            user_id_to_exclude,
+            room_id,
+            message,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -194,6 +209,7 @@ impl<'r> rocket::response::Responder<'r, 'static> for ApiError {
 /// are in a vector of bytes [`u8`].
 #[derive(Clone)]
 pub enum WebSocketEvents {
+    Error,
     /// Broadcasted to all clients
     /// in a room when a
     /// user has joined the room, except the latter.
@@ -234,4 +250,55 @@ pub enum WebSocketEvents {
     PointerUp,
     ChangeColor,
     Tick,
+    ResetRoom,
+    NewHost,
+}
+
+impl TryFrom<u8> for WebSocketEvents {
+    type Error = Box<dyn std::error::Error>;
+
+    fn try_from(value: u8) -> Result<Self, <WebSocketEvents as TryFrom<u8>>::Error> {
+        match value {
+            0 => Ok(Self::Error),
+            1 => Ok(Self::UserJoined),
+            2 => Ok(Self::UserLeft),
+            4 => Ok(Self::StartGame),
+            5 => Ok(Self::EndGame),
+            6 => Ok(Self::NewRound),
+            7 => Ok(Self::NewUserToDraw),
+            8 => Ok(Self::PointerDown),
+            9 => Ok(Self::PointerMove),
+            10 => Ok(Self::PointerUp),
+            11 => Ok(Self::ChangeColor),
+            12 => Ok(Self::Tick),
+            13 => Ok(Self::ResetRoom),
+            14 => Ok(Self::NewHost),
+            _ => Err("Invalid WebSocketEvents payload".into()),
+        }
+    }
+}
+
+impl TryFrom<WebSocketEvents> for u8 {
+    type Error = Box<dyn std::error::Error>;
+
+    fn try_from(
+        value: WebSocketEvents,
+    ) -> Result<Self, <u8 as TryFrom<WebSocketEvents>>::Error> {
+        match value {
+            WebSocketEvents::Error => Ok(0),
+            WebSocketEvents::UserJoined => Ok(1),
+            WebSocketEvents::UserLeft => Ok(2),
+            WebSocketEvents::StartGame => Ok(4),
+            WebSocketEvents::EndGame => Ok(5),
+            WebSocketEvents::NewRound => Ok(6),
+            WebSocketEvents::NewUserToDraw => Ok(7),
+            WebSocketEvents::PointerDown => Ok(8),
+            WebSocketEvents::PointerMove => Ok(9),
+            WebSocketEvents::PointerUp => Ok(10),
+            WebSocketEvents::ChangeColor => Ok(11),
+            WebSocketEvents::Tick => Ok(12),
+            WebSocketEvents::ResetRoom => Ok(13),
+            WebSocketEvents::NewHost => Ok(14),
+        }
+    }
 }
