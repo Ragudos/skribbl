@@ -8,4 +8,7 @@ export const STATE: GameState = {
 
     user: null,
     room: null,
+
+    usersInRoom: [],
+    binaryProtocolVersion: null,
 };

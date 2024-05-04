@@ -1,9 +1,17 @@
+use crate::utils;
+
 #[derive(rocket::serde::Serialize, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum Visibility {
     #[serde(rename = "public")]
     Public,
     #[serde(rename = "private")]
     Private,
+}
+
+impl Default for Visibility {
+    fn default() -> Self {
+        Self::Public
+    }
 }
 
 #[derive(rocket::serde::Serialize, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -34,35 +42,33 @@ pub enum RoomState {
     Finished,
 }
 
-#[derive(rocket::serde::Serialize, Clone, Debug)]
+impl Default for RoomState {
+    fn default() -> Self {
+        Self::Waiting
+    }
+}
+
+#[derive(rocket::serde::Serialize, derive_builder::Builder, Clone, Debug)]
 pub struct Room {
     pub id: String,
     #[serde(rename = "hostId")]
     pub host_id: String,
+    #[builder(default)]
     pub visibility: Visibility,
+    #[builder(default)]
     pub state: RoomState,
     #[serde(rename = "maxUsers")]
+    #[builder(default = "8")]
     pub max_users: usize,
     #[serde(rename = "maxRounds")]
+    #[builder(default = "4")]
     pub max_rounds: u8,
+    #[serde(skip_serializing)]
+    #[builder(default)]
+    pub amount_of_users: usize,
 }
 
-impl Room {
-    /// Create a new room with the given id, host id, and visibility.
-    /// The room will be in `RoomState::Waiting` initially.
-    pub fn new(id: String, host_id: String, visibility: Visibility) -> Self {
-        Self {
-            id,
-            host_id,
-            visibility,
-            state: RoomState::Waiting,
-            max_users: 8,
-            max_rounds: 4,
-        }
-    }
-}
-
-#[derive(rocket::serde::Serialize, Clone, Debug)]
+#[derive(rocket::serde::Serialize, derive_builder::Builder, Clone, Debug)]
 pub struct User {
     pub id: String,
     #[serde(rename = "displayName")]
@@ -70,18 +76,8 @@ pub struct User {
     #[serde(skip_serializing)]
     pub room_id: String,
     #[serde(skip_serializing)]
+    #[builder(default = "false")]
     pub has_drawn: bool,
-}
-
-impl User {
-    pub fn new(id: String, display_name: String, room_id: String) -> Self {
-        Self {
-            id,
-            display_name,
-            room_id,
-            has_drawn: false,
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -125,6 +121,14 @@ impl GameState {
     }
 }
 
+#[derive(rocket::FromFormField, PartialEq, Eq, PartialOrd, Ord)]
+pub enum HandshakeMode {
+    #[field(value = "play")]
+    Play,
+    #[field(value = "create")]
+    Create,
+}
+
 #[derive(rocket::FromForm)]
 pub struct HandshakeData {
     #[field(name = "displayName", validate = len(3..=20))]
@@ -141,13 +145,18 @@ pub struct HandshakeData {
     /// exist in the query params.
     #[field(name = "roomId")]
     pub room_id: String,
+    pub mode: HandshakeMode,
 }
 
-#[derive(rocket::serde::Serialize, Clone)]
+#[derive(rocket::serde::Serialize, derive_builder::Builder, Clone)]
 pub struct HandshakePayload {
     pub user: User,
     pub room: Room,
+    #[serde(rename = "usersInRoom")]
     pub users_in_room: Vec<User>,
+    #[serde(rename = "binaryProtocolVersion")]
+    #[builder(default = "utils::consts::BINARY_PROTOCOL_VERSION")]
+    pub binary_protocol_version: u8,
 }
 
 impl<'r> rocket::response::Responder<'r, 'static> for HandshakePayload {
@@ -157,40 +166,6 @@ impl<'r> rocket::response::Responder<'r, 'static> for HandshakePayload {
     ) -> rocket::response::Result<'static> {
         let stringified_payload = serde_json::to_string(&self).map_err(|err| {
             rocket::error!("Failed to serialize HandshakePayload: {:?}", err);
-
-            rocket::http::Status::InternalServerError
-        })?;
-
-        rocket::response::Response::build()
-            .header(rocket::http::ContentType::JSON)
-            .sized_body(
-                stringified_payload.len(),
-                std::io::Cursor::new(stringified_payload),
-            )
-            .ok()
-    }
-}
-
-#[derive(rocket::serde::Serialize, Clone)]
-pub struct ApiError {
-    pub message: String,
-}
-
-impl ApiError {
-    pub fn new(message: Option<String>) -> Self {
-        Self {
-            message: message.unwrap_or_else(|| "An error occurred".to_string()),
-        }
-    }
-}
-
-impl<'r> rocket::response::Responder<'r, 'static> for ApiError {
-    fn respond_to(
-        self,
-        _request: &'r rocket::Request<'_>,
-    ) -> rocket::response::Result<'static> {
-        let stringified_payload = serde_json::to_string(&self).map_err(|err| {
-            rocket::error!("Failed to serialize ApiError: {:?}", err);
 
             rocket::http::Status::InternalServerError
         })?;
@@ -262,17 +237,17 @@ impl TryFrom<u8> for WebSocketEvents {
             0 => Ok(Self::Error),
             1 => Ok(Self::UserJoined),
             2 => Ok(Self::UserLeft),
-            4 => Ok(Self::StartGame),
-            5 => Ok(Self::EndGame),
-            6 => Ok(Self::NewRound),
-            7 => Ok(Self::NewUserToDraw),
-            8 => Ok(Self::PointerDown),
-            9 => Ok(Self::PointerMove),
-            10 => Ok(Self::PointerUp),
-            11 => Ok(Self::ChangeColor),
-            12 => Ok(Self::Tick),
-            13 => Ok(Self::ResetRoom),
-            14 => Ok(Self::NewHost),
+            3 => Ok(Self::StartGame),
+            4 => Ok(Self::EndGame),
+            5 => Ok(Self::NewRound),
+            6 => Ok(Self::NewUserToDraw),
+            7 => Ok(Self::PointerDown),
+            8 => Ok(Self::PointerMove),
+            9 => Ok(Self::PointerUp),
+            10 => Ok(Self::ChangeColor),
+            11 => Ok(Self::Tick),
+            12 => Ok(Self::ResetRoom),
+            13 => Ok(Self::NewHost),
             _ => Err("Invalid WebSocketEvents payload".into()),
         }
     }
@@ -288,17 +263,17 @@ impl TryFrom<WebSocketEvents> for u8 {
             WebSocketEvents::Error => Ok(0),
             WebSocketEvents::UserJoined => Ok(1),
             WebSocketEvents::UserLeft => Ok(2),
-            WebSocketEvents::StartGame => Ok(4),
-            WebSocketEvents::EndGame => Ok(5),
-            WebSocketEvents::NewRound => Ok(6),
-            WebSocketEvents::NewUserToDraw => Ok(7),
-            WebSocketEvents::PointerDown => Ok(8),
-            WebSocketEvents::PointerMove => Ok(9),
-            WebSocketEvents::PointerUp => Ok(10),
-            WebSocketEvents::ChangeColor => Ok(11),
-            WebSocketEvents::Tick => Ok(12),
-            WebSocketEvents::ResetRoom => Ok(13),
-            WebSocketEvents::NewHost => Ok(14),
+            WebSocketEvents::StartGame => Ok(3),
+            WebSocketEvents::EndGame => Ok(4),
+            WebSocketEvents::NewRound => Ok(5),
+            WebSocketEvents::NewUserToDraw => Ok(6),
+            WebSocketEvents::PointerDown => Ok(7),
+            WebSocketEvents::PointerMove => Ok(8),
+            WebSocketEvents::PointerUp => Ok(9),
+            WebSocketEvents::ChangeColor => Ok(10),
+            WebSocketEvents::Tick => Ok(11),
+            WebSocketEvents::ResetRoom => Ok(12),
+            WebSocketEvents::NewHost => Ok(13),
         }
     }
 }

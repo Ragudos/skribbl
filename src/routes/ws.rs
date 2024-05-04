@@ -6,20 +6,6 @@ use crate::model::{self, WebSocketMessage};
 use crate::utils;
 use crate::utils::consts::BINARY_PROTOCOL_VERSION;
 
-pub fn find_user_by_id<'a>(
-    users: &'a Vec<model::User>,
-    id: &str,
-) -> Option<&'a model::User> {
-    users.iter().find(|u| u.id == id)
-}
-
-pub fn find_room_by_id<'a>(
-    rooms: &'a Vec<model::Room>,
-    id: &str,
-) -> Option<&'a model::Room> {
-    rooms.iter().find(|r| r.id == id)
-}
-
 async fn spawn_timer<'st>(
     room_id: String,
     game_state: &'st rocket::State<model::GameState>,
@@ -141,19 +127,15 @@ async fn create_reader<'st>(
                 let mut users = game_state.users.lock().await;
                 let mut rooms = game_state.rooms.lock().await;
 
-                let num_of_users_in_room = users.iter().fold(0, |acc, user| {
-                    if user.room_id == room_id {
-                        return acc + 1;
-                    }
+                let Some(room) = rooms.iter_mut().find(|r| r.id == room_id) else {
+                    unreachable!("Room should exist when a user leaves.");
+                };
 
-                    acc
-                });
-
-                if num_of_users_in_room == 0 {
+                if room.amount_of_users == 0 {
                     unreachable!("A room with no users should have been deleted")
                 }
 
-                if num_of_users_in_room == 1 {
+                if room.amount_of_users == 1 {
                     let Some(user_idx) = users.iter().position(|u| u.id == user_id)
                     else {
                         unreachable!("User should exist when leaving the room.");
@@ -165,11 +147,9 @@ async fn create_reader<'st>(
 
                     users.remove(user_idx);
                     rooms.remove(room_idx);
-                } else if num_of_users_in_room == 2 {
-                    let Some(room) = rooms.iter_mut().find(|r| r.id == room_id) else {
-                        unreachable!("Room should exist when a user leaves.");
-                    };
 
+                    break;
+                } else if room.amount_of_users == 2 {
                     match &room.state {
                         &model::RoomState::Playing { .. } => {
                             if let Some(user) = users.iter_mut().find(|u| {
@@ -184,14 +164,12 @@ async fn create_reader<'st>(
                     }
                 }
 
-                let Some(room) = rooms.iter_mut().find(|r| r.id == room_id) else {
-                    unreachable!("Room should exist when a user leaves.");
-                };
                 let Some(user_pos) = users.iter().position(|u| u.id == user_id) else {
                     unreachable!("User should exist when leaving the room.");
                 };
 
                 users.remove(user_pos);
+                room.amount_of_users -= 1;
 
                 let user_id_bytes = user_id.as_bytes();
                 let user_id_bytes_length = user_id_bytes.len();
@@ -205,7 +183,6 @@ async fn create_reader<'st>(
                 );
                 message.push(1);
                 message.push(user_id_bytes_length as u8);
-
                 message.extend(user_id_bytes);
 
                 let _ = messages.send(model::WebSocketMessage::new(
@@ -217,7 +194,7 @@ async fn create_reader<'st>(
                 if user_id == room.host_id {
                     // We already removed the user who opened this connection, so
                     // we can just find the next possible user in the room who can be the host.
-                    let Some(new_host) = users.iter().find(|u| u.id == room.host_id)
+                    let Some(new_host) = users.iter().find(|u| u.room_id == room_id)
                     else {
                         unreachable!("There should be at least one user in the room.");
                     };
@@ -290,7 +267,7 @@ async fn create_reader<'st>(
                                     user.has_drawn = false;
                                 }
                             });
-
+                            // TODO: Send new round event here
                             return;
                         }
 
@@ -363,6 +340,17 @@ async fn create_reader<'st>(
 
                 break;
             }
+            ws::Message::Pong(_) => {
+                continue;
+            }
+            ws::Message::Ping(_) => {
+                let _ = sink
+                    .lock()
+                    .await
+                    .send(ws::Message::Pong(vec![]))
+                    .await;
+                continue;
+            }
             _ => {}
         }
 
@@ -374,6 +362,32 @@ async fn create_reader<'st>(
 
         match event_type {
             model::WebSocketEvents::StartGame => {
+                let mut rooms = game_state.rooms.lock().await;
+                let Some(room) = rooms.iter_mut().find(|r| r.id == room_id) else {
+                    unreachable!("Room should exist when sending the StartGame event.");
+                };
+
+                if room.host_id != user_id {
+                    let mut sink = sink.lock().await;
+
+                    let error_msg = "Only the host can start the game";
+                    let error_msg_bytes = error_msg.as_bytes();
+                    let error_msg_bytes_length = error_msg_bytes.len();
+
+                    let mut message =
+                        Vec::with_capacity(2 + 1 + 1 + error_msg_bytes_length);
+
+                    message.push(BINARY_PROTOCOL_VERSION);
+                    message.push(model::WebSocketEvents::Error.try_into().unwrap());
+                    message.push(1);
+                    message.push(error_msg_bytes_length as u8);
+                    message.extend(error_msg_bytes);
+
+                    sink.send(ws::Message::Binary(message)).await?;
+
+                    continue;
+                }
+
                 let mut users = game_state.users.lock().await;
                 let mut users_in_room = users
                     .iter_mut()
@@ -403,11 +417,6 @@ async fn create_reader<'st>(
 
                     continue;
                 }
-
-                let mut rooms = game_state.rooms.lock().await;
-                let Some(room) = rooms.iter_mut().find(|r| r.id == room_id) else {
-                    unreachable!("Room should exist when sending the StartGame event.");
-                };
 
                 let random_idx = rand::thread_rng().gen_range(0..num_of_users_in_room);
                 let user_to_draw = &mut *users_in_room[random_idx];
@@ -466,6 +475,8 @@ async fn create_reader<'st>(
 
                 // We only want to send the raw current word to the current user who's
                 // drawing. We don't want to send the current word to the other users.
+                // So, we process the current word and replace all characters with '*'
+                // in the socket writer of other clients.
                 let _ = messages.send(model::WebSocketMessage::new(
                     Some(user_to_draw_id.clone()),
                     room_id.clone(),
@@ -473,20 +484,6 @@ async fn create_reader<'st>(
                 ));
 
                 spawn_timer(room_id.clone(), game_state, ticker).await;
-            }
-            model::WebSocketEvents::UserJoined => {
-                let _ = messages.send(model::WebSocketMessage::new(
-                    Some(user_id.clone()),
-                    room_id.clone(),
-                    ws::Message::Binary(data),
-                ));
-            }
-            model::WebSocketEvents::UserLeft => {
-                let _ = messages.send(model::WebSocketMessage::new(
-                    None,
-                    room_id.clone(),
-                    ws::Message::Binary(data),
-                ));
             }
             _ => {
                 let _ = messages.send(model::WebSocketMessage::new(
@@ -615,6 +612,7 @@ async fn create_timer<'st>(
             rocket::futures::stream::SplitSink<ws::stream::DuplexStream, ws::Message>,
         >,
     >,
+    game_state: &'st rocket::State<model::GameState>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut receiver = ticker.subscribe();
 
@@ -623,14 +621,32 @@ async fn create_timer<'st>(
             continue;
         }
 
-        let mut message = Vec::with_capacity(2);
+        let rooms = game_state.rooms.lock().await;
+        let Some(room) = rooms.iter().find(|r| r.id == room_id) else {
+            unreachable!("Room should exist when sending the WebSocket Tick event.");
+        };
 
-        message.push(BINARY_PROTOCOL_VERSION);
+        match &room.state {
+            &model::RoomState::Playing { time_left, .. } => {
+                let time_left_bytes = vec![time_left.clone()];
+                let time_left_bytes_length = time_left_bytes.len();
+                let mut message = Vec::with_capacity(2 + 1 + 1 + time_left_bytes_length);
 
-        sink.lock()
-            .await
-            .send(ws::Message::Text("tick".to_string()))
-            .await?;
+                message.push(BINARY_PROTOCOL_VERSION);
+                message.push(model::WebSocketEvents::Tick.try_into().unwrap());
+                message.push(1);
+                message.push(time_left_bytes_length as u8);
+                message.extend(time_left_bytes);
+
+                sink.lock()
+                    .await
+                    .send(ws::Message::Binary(message))
+                    .await?;
+            }
+            _ => unreachable!(
+                "Room should be in Playing state when sending the WebSocket Tick event."
+            ),
+        }
     }
 
     Ok(())
@@ -638,16 +654,51 @@ async fn create_timer<'st>(
 
 #[rocket::get("/?<sid>")]
 pub async fn ws_endpoint<'st>(
-    sid: &'st str,
+    sid: &str,
     game_state: &'st rocket::State<model::GameState>,
     messages: &'st rocket::State<tokio::sync::broadcast::Sender<model::WebSocketMessage>>,
     ticker: &'st rocket::State<tokio::sync::broadcast::Sender<model::WebSocketTick>>,
     ws: ws::WebSocket,
 ) -> Result<ws::Channel<'st>, String> {
     let users = game_state.users.lock().await;
-    let user = find_user_by_id(&users, sid)
+    let user = utils::realtime::find_user_by_id(&users, sid)
         .ok_or("User not found")?
         .clone();
+
+    game_state
+        .rooms
+        .lock()
+        .await
+        .iter_mut()
+        .for_each(|room| {
+            if room.id == user.room_id {
+                room.amount_of_users += 1;
+            }
+        });
+
+    let stringified_user = serde_json::to_string(&user).map_err(|err| {
+        rocket::error!("Failed to serialize user: {:?}", err);
+        "Something went wrong".to_string()
+    })?;
+    let stringified_user_bytes = stringified_user.as_bytes();
+    let stringified_user_bytes_length = stringified_user_bytes.len();
+    let mut message = Vec::with_capacity(2 + 1 + 1 + stringified_user_bytes_length);
+
+    message.push(BINARY_PROTOCOL_VERSION);
+    message.push(
+        model::WebSocketEvents::UserJoined
+            .try_into()
+            .expect("UserJoined event should be transformable to u8"),
+    );
+    message.push(1);
+    message.push(stringified_user_bytes_length as u8);
+    message.extend(stringified_user_bytes);
+
+    let _ = messages.send(WebSocketMessage::new(
+        None,
+        user.room_id.clone(),
+        ws::Message::Binary(message),
+    ));
 
     return Ok(ws.channel(move |duplex: ws::stream::DuplexStream| {
         Box::pin(async move {
@@ -670,7 +721,8 @@ pub async fn ws_endpoint<'st>(
                 game_state,
                 sink.clone(),
             );
-            let timer = create_timer(user.room_id.clone(), ticker, sink.clone());
+            let timer =
+                create_timer(user.room_id.clone(), ticker, sink.clone(), game_state);
 
             // Wait for either the readers or writers to finish (They stop executing).
             // This allows us to both read and write to the websocket at the same time.
@@ -680,118 +732,131 @@ pub async fn ws_endpoint<'st>(
                 _ = timer => {},
             }
 
+            println!("WebSocket connection closed");
+
             Ok(())
         })
     }));
 }
 
 #[rocket::post("/handshake", data = "<form>")]
-pub async fn handshake_endpoint(
+pub async fn handshake_endpoint<'st>(
     game_state: &rocket::State<model::GameState>,
     form: Result<rocket::form::Form<model::HandshakeData>, rocket::form::Errors<'_>>,
-) -> Result<model::HandshakePayload, (rocket::http::Status, String)> {
-    let form = form.map_err(|_err| {
-        (
-            rocket::http::Status::UnprocessableEntity,
-            "Display name is required and must be between 3 and 20 characters long."
-                .to_string(),
-        )
-    })?;
+) -> Result<model::HandshakePayload, (rocket::http::Status, &'st str)> {
+    let form = form
+        .map_err(|_err| {
+            (
+                rocket::http::Status::UnprocessableEntity,
+                "Display name is required and must be between 3 and 20 characters long.",
+            )
+        })?
+        .into_inner();
 
-    let mut rooms = game_state.rooms.lock().await;
-    let mut users = game_state.users.lock().await;
+    if form.mode == model::HandshakeMode::Create {
+        let room_id = utils::gen_random_id();
+        let user_id = utils::gen_random_id();
+        let room = model::RoomBuilder::default()
+            .id(room_id.clone())
+            .host_id(user_id.clone())
+            .build()
+            .unwrap();
+        let user = model::UserBuilder::default()
+            .id(user_id)
+            .room_id(room_id)
+            .display_name(form.display_name)
+            .build()
+            .unwrap();
+
+        let users_in_room = vec![user.clone()];
+
+        game_state.rooms.lock().await.push(room.clone());
+        game_state.users.lock().await.push(user.clone());
+
+        return Ok(model::HandshakePayloadBuilder::default()
+            .user(user)
+            .room(room)
+            .users_in_room(users_in_room)
+            .build()
+            .unwrap());
+    }
 
     if form.room_id.is_empty() {
-        let available_room = rooms.iter().find(|room| {
-            room.state == model::RoomState::Waiting
-                && room.visibility == model::Visibility::Public
-                && room.max_users
-                    > users.iter().fold(0, |acc, user| {
-                        if user.room_id == room.id {
-                            return acc + 1;
-                        }
+        if let Some(room) =
+            utils::realtime::find_available_public_room(&game_state.rooms.lock().await)
+        {
+            let user = model::UserBuilder::default()
+                .id(utils::gen_random_id())
+                .display_name(form.display_name)
+                .room_id(room.id.clone())
+                .build()
+                .unwrap();
+            let mut users = game_state.users.lock().await;
 
-                        acc
-                    })
-        });
+            users.push(user.clone());
 
-        match available_room {
-            Some(room) => {
-                let user_id = utils::gen_random_id();
-                let user =
-                    model::User::new(user_id, form.display_name.clone(), room.id.clone());
+            let users_in_room =
+                utils::realtime::get_and_clone_users_in_room(&users, &room.id);
 
-                users.push(user.clone());
-
-                let users_in_room = users
-                    .iter()
-                    .filter_map(|user| {
-                        if user.room_id == room.id {
-                            return Some(user.clone());
-                        }
-
-                        None
-                    })
-                    .collect::<Vec<model::User>>();
-
-                return Ok(model::HandshakePayload {
-                    user,
-                    room: room.clone(),
-                    users_in_room,
-                });
-            }
-            None => {
-                let room_id = utils::gen_random_id();
-                let user_id = utils::gen_random_id();
-                let room = model::Room::new(
-                    room_id.clone(),
-                    user_id.clone(),
-                    model::Visibility::Public,
-                );
-                let user = model::User::new(user_id, form.display_name.clone(), room_id);
-                let users_in_room = vec![user.clone()];
-
-                rooms.push(room.clone());
-                users.push(user.clone());
-
-                return Ok(model::HandshakePayload {
-                    user,
-                    room,
-                    users_in_room,
-                });
-            }
+            return Ok(model::HandshakePayload {
+                user,
+                room: room.clone(),
+                users_in_room,
+                binary_protocol_version: BINARY_PROTOCOL_VERSION,
+            });
         }
+
+        let room_id = utils::gen_random_id();
+        let user_id = utils::gen_random_id();
+        let room = model::RoomBuilder::default()
+            .id(room_id.clone())
+            .host_id(user_id.clone())
+            .build()
+            .unwrap();
+        let user = model::UserBuilder::default()
+            .id(user_id)
+            .room_id(room_id)
+            .display_name(form.display_name)
+            .build()
+            .unwrap();
+
+        let users_in_room = vec![user.clone()];
+
+        game_state.rooms.lock().await.push(room.clone());
+        game_state.users.lock().await.push(user.clone());
+
+        return Ok(model::HandshakePayloadBuilder::default()
+            .user(user)
+            .room(room)
+            .users_in_room(users_in_room)
+            .build()
+            .unwrap());
     }
 
-    let room = find_room_by_id(&rooms, &form.room_id)
-        .ok_or((rocket::http::Status::NotFound, "Room not found".to_string()))?;
+    let rooms = game_state.rooms.lock().await;
+    let room = utils::realtime::find_room_by_id(&rooms, &form.room_id)
+        .ok_or((rocket::http::Status::NotFound, "Room not found"))?;
 
     if room.state != model::RoomState::Waiting {
-        return Err((
-            rocket::http::Status::Conflict,
-            "Room is currently in game".to_string(),
-        ));
+        return Err((rocket::http::Status::Conflict, "Room is currently in game"));
     }
 
-    let user_id = utils::gen_random_id();
-    let user = model::User::new(user_id, form.display_name.clone(), room.id.clone());
+    let user = model::UserBuilder::default()
+        .id(utils::gen_random_id())
+        .display_name(form.display_name)
+        .room_id(room.id.clone())
+        .build()
+        .unwrap();
+    let mut users = game_state.users.lock().await;
 
     users.push(user.clone());
 
-    let users_in_room = users
-        .iter()
-        .filter_map(|user| {
-            if user.room_id == room.id {
-                return Some(user.clone());
-            }
+    let users_in_room = utils::realtime::get_and_clone_users_in_room(&users, &room.id);
 
-            None
-        })
-        .collect::<Vec<model::User>>();
-
-    Ok(model::HandshakePayload {
-        user,
-        room: room.clone(),
-        users_in_room,
-    })
+    Ok(model::HandshakePayloadBuilder::default()
+        .user(user)
+        .room(room.clone())
+        .users_in_room(users_in_room)
+        .build()
+        .unwrap())
 }
