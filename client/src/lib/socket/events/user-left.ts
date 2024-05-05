@@ -5,11 +5,13 @@ import { toast } from "../../toast";
 
 export async function handleUserLeft(data: Array<number>) {
     const userId = parseData(data);
+    const userIdx = STATE.usersInRoom.findIndex((user) => user.id === userId);
 
-    const user = STATE.usersInRoom.splice(
-        STATE.usersInRoom.findIndex((user) => user.id === userId),
-        1,
-    )[0];
+    if (userIdx === -1) {
+        return;
+    }
+
+    const user = STATE.usersInRoom.splice(userIdx, 1)[0];
 
     playerLeft(user.id);
     toast(`${user.displayName} left the room`);

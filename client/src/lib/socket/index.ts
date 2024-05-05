@@ -1,6 +1,20 @@
 import { STATE } from "../../state";
 import { WebSocketEvents } from "../../types";
 import { toast } from "../toast";
+import { handleChangeColor } from "./events/change-color";
+import { handleEndGame } from "./events/end-game";
+import { handleError } from "./events/error";
+import { handleNewHost } from "./events/new-host";
+import { handleNewRound } from "./events/new-round";
+import { handleNewUserToDraw } from "./events/new-user-to-draw";
+import { handlePointerDown } from "./events/pointer-down";
+import { handlePointerMove } from "./events/pointer-move";
+import { handlePointerUp } from "./events/pointer-up";
+import { handleResetRoom } from "./events/reset-room";
+import { handleStartGame } from "./events/start-game";
+import { handleTick } from "./events/tick";
+import { handleUserJoined } from "./events/user-joined";
+import { handleUserLeft } from "./events/user-left";
 
 export async function connectToSocket(uri: string) {
     let retryTime = 1;
@@ -44,56 +58,46 @@ export async function connectToSocket(uri: string) {
 
             switch (event) {
                 case WebSocketEvents.Error:
-                    (await import("./events/error")).handleError(data);
+                    handleError(data);
                     break;
                 case WebSocketEvents.UserJoined:
-                    (await import("./events/user-joined")).handleUserJoined(
-                        data,
-                    );
+                    handleUserJoined(data);
                     break;
                 case WebSocketEvents.UserLeft:
-                    (await import("./events/user-left")).handleUserLeft(data);
+                    handleUserLeft(data);
                     break;
                 case WebSocketEvents.StartGame:
-                    (await import("./events/start-game")).handleStartGame(data);
+                    handleStartGame(data);
                     break;
                 case WebSocketEvents.EndGame:
-                    (await import("./events/end-game")).handleEndGame(data);
+                    handleEndGame(data);
                     break;
                 case WebSocketEvents.NewRound:
-                    (await import("./events/new-round")).handleNewRound(data);
+                    handleNewRound(data);
                     break;
                 case WebSocketEvents.NewUserToDraw:
-                    (
-                        await import("./events/new-user-to-draw")
-                    ).handleNewUserToDraw(data);
+                    handleNewUserToDraw(data);
                     break;
                 case WebSocketEvents.PointerDown:
-                    (await import("./events/pointer-down")).handlePointerDown(
-                        data,
-                    );
+                    handlePointerDown(data);
                     break;
                 case WebSocketEvents.PointerMove:
-                    (await import("./events/pointer-move")).handlePointerMove(
-                        data,
-                    );
+                    handlePointerMove(data);
                     break;
                 case WebSocketEvents.PointerUp:
-                    (await import("./events/pointer-up")).handlePointerUp(data);
+                    handlePointerUp(data);
                     break;
                 case WebSocketEvents.ChangeColor:
-                    (await import("./events/change-color")).handleChangeColor(
-                        data,
-                    );
+                    handleChangeColor(data);
                     break;
                 case WebSocketEvents.Tick:
-                    (await import("./events/tick")).handleTick(data);
+                    handleTick(data);
                     break;
                 case WebSocketEvents.ResetRoom:
-                    (await import("./events/reset-room")).handleResetRoom(data);
+                    handleResetRoom(data);
                     break;
                 case WebSocketEvents.NewHost:
-                    (await import("./events/new-host")).handleNewHost(data);
+                    handleNewHost(data);
                     break;
                 default:
                     console.error("Received unknown event from server");

@@ -17,9 +17,15 @@ createPrivateRoomBtn.addEventListener("click", createSubmit);
 function playSubmit(evt: Event) {
     evt.preventDefault();
 
+    playBtn.disabled = true;
+    createPrivateRoomBtn.disabled = true;
+
     submit("play");
 }
 
 function createSubmit() {
+    playBtn.disabled = true;
+    createPrivateRoomBtn.disabled = true;
+
     submit("create");
 }

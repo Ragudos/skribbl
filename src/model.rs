@@ -68,6 +68,13 @@ pub struct Room {
     pub amount_of_users: usize,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ConnectionState {
+    Connected,
+    Connecting,
+    Disconnected,
+}
+
 #[derive(rocket::serde::Serialize, derive_builder::Builder, Clone, Debug)]
 pub struct User {
     pub id: String,
@@ -78,9 +85,12 @@ pub struct User {
     #[serde(skip_serializing)]
     #[builder(default = "false")]
     pub has_drawn: bool,
+    #[serde(skip_serializing)]
+    #[builder(default = "ConnectionState::Connecting")]
+    pub connection_state: ConnectionState,
 }
 
-#[derive(Clone)]
+#[derive(Clone, derive_builder::Builder)]
 pub struct WebSocketMessage {
     pub user_id_to_exclude: Option<String>,
     pub room_id: String,
@@ -159,121 +169,37 @@ pub struct HandshakePayload {
     pub binary_protocol_version: u8,
 }
 
-impl<'r> rocket::response::Responder<'r, 'static> for HandshakePayload {
-    fn respond_to(
-        self,
-        _request: &'r rocket::Request<'_>,
-    ) -> rocket::response::Result<'static> {
-        let stringified_payload = serde_json::to_string(&self).map_err(|err| {
-            rocket::error!("Failed to serialize HandshakePayload: {:?}", err);
-
-            rocket::http::Status::InternalServerError
-        })?;
-
-        rocket::response::Response::build()
-            .header(rocket::http::ContentType::JSON)
-            .sized_body(
-                stringified_payload.len(),
-                std::io::Cursor::new(stringified_payload),
-            )
-            .ok()
-    }
-}
-
-/// All payloads in these events
-/// are in a vector of bytes [`u8`].
 #[derive(Clone)]
-pub enum WebSocketEvents {
-    Error,
-    /// Broadcasted to all clients
-    /// in a room when a
-    /// user has joined the room, except the latter.
-    /// The payload is as follows:
-    ///
-    /// ```rust
-    /// vec![
-    ///     BINARY_PROTOCOL_VERSION,
-    ///     WebSocketEvents::UserJoined as u8,
-    ///     // How long the [`UserLength`] is
-    ///     // since we might have a string
-    ///     // with a length of more than 255.
-    ///     // For example, if the length of the
-    ///     // string is 300, this will have:
-    ///     // 300 / 255 = 1.171875, which will
-    ///     // be rounded up to 2 since it
-    ///     // takes 2 bytes of space. Thus, the
-    ///     // `UserLengthSpace` will be 2.
-    ///     UserLengthSpace as u8,
-    ///     // The length of the serialized
-    ///     // [`User`] struct's vector of bytes.
-    ///     // Can be more than 1 byte.
-    ///     UserLength as u8,
-    ///     // The serialized
-    ///     // [`User`] struct turned into
-    ///     // a vector of bytes.
-    ///     User { ... }
-    /// ]
-    /// ```
-    UserJoined,
-    UserLeft,
+pub enum ClientToServerEvents {
     StartGame,
-    EndGame,
-    NewRound,
-    NewUserToDraw,
+    LeaveRoom,
     PointerDown,
     PointerMove,
     PointerUp,
     ChangeColor,
-    Tick,
+}
+
+#[derive(Clone)]
+pub enum ServerToClientEvents {
+    Error { message: String },
+    UserJoined { user: User },
+    UserLeft { user_id: String },
+    StartGame,
+    EndGame,
     ResetRoom,
-    NewHost,
+    NewRound { round: u8, user_id_to_draw: String },
+    NewUserToDraw { user_id: String },
+    NewHost { user_id: String },
+    NewWord { word: WordToDraw },
+    PointerDown,
+    PointerMove,
+    PointerUp,
+    ChangeColor { color: String },
+    Tick { time_left: u8 },
 }
 
-impl TryFrom<u8> for WebSocketEvents {
-    type Error = Box<dyn std::error::Error>;
-
-    fn try_from(value: u8) -> Result<Self, <WebSocketEvents as TryFrom<u8>>::Error> {
-        match value {
-            0 => Ok(Self::Error),
-            1 => Ok(Self::UserJoined),
-            2 => Ok(Self::UserLeft),
-            3 => Ok(Self::StartGame),
-            4 => Ok(Self::EndGame),
-            5 => Ok(Self::NewRound),
-            6 => Ok(Self::NewUserToDraw),
-            7 => Ok(Self::PointerDown),
-            8 => Ok(Self::PointerMove),
-            9 => Ok(Self::PointerUp),
-            10 => Ok(Self::ChangeColor),
-            11 => Ok(Self::Tick),
-            12 => Ok(Self::ResetRoom),
-            13 => Ok(Self::NewHost),
-            _ => Err("Invalid WebSocketEvents payload".into()),
-        }
-    }
-}
-
-impl TryFrom<WebSocketEvents> for u8 {
-    type Error = Box<dyn std::error::Error>;
-
-    fn try_from(
-        value: WebSocketEvents,
-    ) -> Result<Self, <u8 as TryFrom<WebSocketEvents>>::Error> {
-        match value {
-            WebSocketEvents::Error => Ok(0),
-            WebSocketEvents::UserJoined => Ok(1),
-            WebSocketEvents::UserLeft => Ok(2),
-            WebSocketEvents::StartGame => Ok(3),
-            WebSocketEvents::EndGame => Ok(4),
-            WebSocketEvents::NewRound => Ok(5),
-            WebSocketEvents::NewUserToDraw => Ok(6),
-            WebSocketEvents::PointerDown => Ok(7),
-            WebSocketEvents::PointerMove => Ok(8),
-            WebSocketEvents::PointerUp => Ok(9),
-            WebSocketEvents::ChangeColor => Ok(10),
-            WebSocketEvents::Tick => Ok(11),
-            WebSocketEvents::ResetRoom => Ok(12),
-            WebSocketEvents::NewHost => Ok(13),
-        }
-    }
+#[derive(Clone)]
+pub enum WordToDraw {
+    Word(String),
+    ObfuscatedWord(String),
 }

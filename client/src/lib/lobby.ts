@@ -1,5 +1,10 @@
 import { wsHost, wsProtocol } from "../consts";
 import { STATE } from "../state";
+import { updateListOfPlayers } from "./dom/list-of-players";
+import { showRoomLink } from "./dom/room-link";
+import { showWaitingRoom } from "./dom/waiting-room";
+import { connectToSocket } from "./socket";
+import { toast } from "./toast";
 import { processError } from "./utils";
 
 export function getPlayBtn() {
@@ -25,9 +30,12 @@ export function getRoomId() {
 }
 
 export async function submit(mode: "play" | "create") {
+    if (STATE.socket.connectionState === "connecting") {
+        return;
+    }
+
     const lobbyForm = getLobbyForm();
     const formData = new FormData(lobbyForm);
-    const { toast } = await import("./toast");
 
     formData.set("mode", mode);
 
@@ -49,14 +57,12 @@ export async function submit(mode: "play" | "create") {
                 handshakePayload.binaryProtocolVersion;
             STATE.usersInRoom = handshakePayload.usersInRoom;
 
-            await (
-                await import("./socket")
-            ).connectToSocket(
+            await connectToSocket(
                 `${wsProtocol}://${wsHost}/ws?sid=${handshakePayload.user.id}`,
             );
-            (await import("./dom/list-of-players")).updateListOfPlayers();
-            (await import("./dom/waiting-room")).showWaitingRoom();
-            (await import("./dom/room-link")).showRoomLink();
+            showWaitingRoom();
+            updateListOfPlayers();
+            showRoomLink();
         }
 
         await toast.promise(
@@ -72,5 +78,8 @@ export async function submit(mode: "play" | "create") {
         STATE.room = null;
         STATE.usersInRoom = [];
         STATE.binaryProtocolVersion = null;
+    } finally {
+        getPlayBtn().disabled = false;
+        getCreatePrivateRoomBtn().disabled = false;
     }
 }

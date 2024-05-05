@@ -31,11 +31,34 @@ pub fn get_and_clone_users_in_room<'st>(
     users
         .iter()
         .filter_map(|user| {
-            if user.room_id == rid {
+            if user.room_id == rid
+                && user.connection_state == model::ConnectionState::Connected
+            {
                 return Some(user.clone());
             }
 
             None
         })
         .collect()
+}
+
+pub fn increment_amount_of_users_in_room(
+    rooms: &mut rocket::futures::lock::MutexGuard<'_, Vec<model::Room>>,
+    room_id: &str,
+) -> () {
+    for room in rooms.iter_mut() {
+        if room.id == room_id {
+            room.amount_of_users += 1;
+            break;
+        }
+    }
+}
+
+impl model::WebSocketMessage {
+    pub fn send(
+        self,
+        messages: &rocket::State<rocket::tokio::sync::broadcast::Sender<Self>>,
+    ) -> () {
+        let _ = messages.send(self);
+    }
 }

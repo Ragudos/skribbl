@@ -1,5 +1,6 @@
 use rocket::tokio;
 
+pub mod controller;
 pub mod fairings;
 pub mod model;
 pub mod routes;
@@ -16,8 +17,14 @@ pub async fn init_rocket(
         loop {
             interval.tick().await;
 
+            let mut users = cloned_game_state.users.lock().await;
+
+            users.retain(|user| {
+                user.connection_state == model::ConnectionState::Connected
+            });
+
             println!("Room {:#?}", cloned_game_state.rooms.lock().await);
-            println!("User {:#?}", cloned_game_state.users.lock().await);
+            println!("User {:#?}", users);
         }
     });
 

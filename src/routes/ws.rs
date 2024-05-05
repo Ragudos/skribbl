@@ -660,21 +660,20 @@ pub async fn ws_endpoint<'st>(
     ticker: &'st rocket::State<tokio::sync::broadcast::Sender<model::WebSocketTick>>,
     ws: ws::WebSocket,
 ) -> Result<ws::Channel<'st>, String> {
-    let users = game_state.users.lock().await;
-    let user = utils::realtime::find_user_by_id(&users, sid)
+    let mut users = game_state.users.lock().await;
+
+    if let Some(user) = users.iter_mut().find(|u| u.id == sid) {
+        user.connection_state = model::ConnectionState::Connected;
+    }
+
+    let user = utils::realtime::find_user_by_id(&mut users, sid)
         .ok_or("User not found")?
         .clone();
 
-    game_state
-        .rooms
-        .lock()
-        .await
-        .iter_mut()
-        .for_each(|room| {
-            if room.id == user.room_id {
-                room.amount_of_users += 1;
-            }
-        });
+    utils::realtime::increment_amount_of_users_in_room(
+        &mut game_state.rooms.lock().await,
+        &user.room_id,
+    );
 
     let stringified_user = serde_json::to_string(&user).map_err(|err| {
         rocket::error!("Failed to serialize user: {:?}", err);
