@@ -1,6 +1,13 @@
-use crate::utils;
-
-#[derive(rocket::serde::Serialize, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(
+    rocket::serde::Serialize,
+    rocket::serde::Deserialize,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Debug,
+)]
 pub enum Visibility {
     #[serde(rename = "public")]
     Public,
@@ -14,7 +21,16 @@ impl Default for Visibility {
     }
 }
 
-#[derive(rocket::serde::Serialize, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(
+    rocket::serde::Serialize,
+    rocket::serde::Deserialize,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Debug,
+)]
 pub enum RoomState {
     #[serde(rename = "waiting")]
     Waiting,
@@ -48,7 +64,13 @@ impl Default for RoomState {
     }
 }
 
-#[derive(rocket::serde::Serialize, derive_builder::Builder, Clone, Debug)]
+#[derive(
+    rocket::serde::Serialize,
+    rocket::serde::Deserialize,
+    derive_builder::Builder,
+    Clone,
+    Debug,
+)]
 pub struct Room {
     pub id: String,
     #[serde(rename = "hostId")]
@@ -64,18 +86,17 @@ pub struct Room {
     #[builder(default = "4")]
     pub max_rounds: u8,
     #[serde(skip_serializing)]
-    #[builder(default)]
+    #[builder(default = "1")]
     pub amount_of_users: usize,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum ConnectionState {
-    Connected,
-    Connecting,
-    Disconnected,
-}
-
-#[derive(rocket::serde::Serialize, derive_builder::Builder, Clone, Debug)]
+#[derive(
+    rocket::serde::Serialize,
+    rocket::serde::Deserialize,
+    derive_builder::Builder,
+    Clone,
+    Debug,
+)]
 pub struct User {
     pub id: String,
     #[serde(rename = "displayName")]
@@ -85,35 +106,23 @@ pub struct User {
     #[serde(skip_serializing)]
     #[builder(default = "false")]
     pub has_drawn: bool,
-    #[serde(skip_serializing)]
-    #[builder(default = "ConnectionState::Connecting")]
-    pub connection_state: ConnectionState,
+}
+
+#[derive(Clone)]
+pub enum WebSocketMessageType {
+    /// Send a message to everyone in the room including the sender.
+    Everyone,
+    /// Send a message to all users in the room except the sender.
+    Broadcast { sender_id: String },
+    /// Send a message to a specific user in the room.
+    User(String),
 }
 
 #[derive(Clone, derive_builder::Builder)]
 pub struct WebSocketMessage {
-    pub user_id_to_exclude: Option<String>,
+    pub r#type: WebSocketMessageType,
     pub room_id: String,
     pub message: ws::Message,
-}
-
-impl WebSocketMessage {
-    pub fn new(
-        user_id_to_exclude: Option<String>,
-        room_id: String,
-        message: ws::Message,
-    ) -> Self {
-        Self {
-            user_id_to_exclude,
-            room_id,
-            message,
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct WebSocketTick {
-    pub room_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -122,66 +131,26 @@ pub struct GameState {
     pub users: std::sync::Arc<rocket::futures::lock::Mutex<Vec<User>>>,
 }
 
-impl GameState {
-    pub fn new() -> Self {
-        Self {
-            rooms: std::sync::Arc::new(rocket::futures::lock::Mutex::new(Vec::new())),
-            users: std::sync::Arc::new(rocket::futures::lock::Mutex::new(Vec::new())),
-        }
-    }
-}
-
-#[derive(rocket::FromFormField, PartialEq, Eq, PartialOrd, Ord)]
-pub enum HandshakeMode {
-    #[field(value = "play")]
-    Play,
-    #[field(value = "create")]
-    Create,
-}
-
-#[derive(rocket::FromForm)]
-pub struct HandshakeData {
-    #[field(name = "displayName", validate = len(3..=20))]
-    pub display_name: String,
-    /// The room id that the user wants to join.
-    /// This is optional, but we don't use Option<String>
-    /// since the field will include
-    ///
-    /// ```html
-    /// <input type="text" name="roomId" value="{{roomId}}" />
-    /// ```
-    ///
-    /// from the template, thus sending an empty string if it doesn't
-    /// exist in the query params.
-    #[field(name = "roomId")]
-    pub room_id: String,
-    pub mode: HandshakeMode,
-}
-
-#[derive(rocket::serde::Serialize, derive_builder::Builder, Clone)]
-pub struct HandshakePayload {
-    pub user: User,
-    pub room: Room,
-    #[serde(rename = "usersInRoom")]
-    pub users_in_room: Vec<User>,
-    #[serde(rename = "binaryProtocolVersion")]
-    #[builder(default = "utils::consts::BINARY_PROTOCOL_VERSION")]
-    pub binary_protocol_version: u8,
-}
-
+/// Events received from the client stream;
 #[derive(Clone)]
 pub enum ClientToServerEvents {
     StartGame,
-    LeaveRoom,
     PointerDown,
-    PointerMove,
+    PointerMove { direction: Direction },
     PointerUp,
-    ChangeColor,
+    Message { message: String },
+}
+
+#[derive(Clone, rocket::serde::Serialize, rocket::serde::Deserialize)]
+pub struct Direction {
+    pub x: f64,
+    pub y: f64,
 }
 
 #[derive(Clone)]
 pub enum ServerToClientEvents {
     Error { message: String },
+    ConnectError { message: String },
     UserJoined { user: User },
     UserLeft { user_id: String },
     StartGame,
@@ -192,10 +161,14 @@ pub enum ServerToClientEvents {
     NewHost { user_id: String },
     NewWord { word: WordToDraw },
     PointerDown,
-    PointerMove,
+    PointerMove { direction: Direction },
     PointerUp,
     ChangeColor { color: String },
     Tick { time_left: u8 },
+    SendUserInfo { user: User },
+    SendRoomInfo { room: Room },
+    SendUsersInRoomInfo { users: Vec<User> },
+    Message { message: String },
 }
 
 #[derive(Clone)]

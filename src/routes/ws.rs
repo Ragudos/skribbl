@@ -628,19 +628,13 @@ async fn create_timer<'st>(
 
         match &room.state {
             &model::RoomState::Playing { time_left, .. } => {
-                let time_left_bytes = vec![time_left.clone()];
-                let time_left_bytes_length = time_left_bytes.len();
-                let mut message = Vec::with_capacity(2 + 1 + 1 + time_left_bytes_length);
-
-                message.push(BINARY_PROTOCOL_VERSION);
-                message.push(model::WebSocketEvents::Tick.try_into().unwrap());
-                message.push(1);
-                message.push(time_left_bytes_length as u8);
-                message.extend(time_left_bytes);
-
                 sink.lock()
                     .await
-                    .send(ws::Message::Binary(message))
+                    .send(
+                        model::ServerToClientEvents::Tick { time_left }
+                            .try_into()
+                            .unwrap(),
+                    )
                     .await?;
             }
             _ => unreachable!(
@@ -819,14 +813,14 @@ pub async fn handshake_endpoint<'st>(
             .build()
             .unwrap();
 
-        let users_in_room = vec![user.clone()];
+        let users_in_room = vec![&user];
 
         game_state.rooms.lock().await.push(room.clone());
         game_state.users.lock().await.push(user.clone());
 
         return Ok(model::HandshakePayloadBuilder::default()
-            .user(user)
-            .room(room)
+            .user(&user)
+            .room(&room)
             .users_in_room(users_in_room)
             .build()
             .unwrap());
@@ -850,11 +844,11 @@ pub async fn handshake_endpoint<'st>(
 
     users.push(user.clone());
 
-    let users_in_room = utils::realtime::get_and_clone_users_in_room(&users, &room.id);
+    let users_in_room = utils::realtime::get_users_in_room(&users, &room.id);
 
     Ok(model::HandshakePayloadBuilder::default()
-        .user(user)
-        .room(room.clone())
+        .user(&user)
+        .room(&room)
         .users_in_room(users_in_room)
         .build()
         .unwrap())

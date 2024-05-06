@@ -38,7 +38,7 @@ pub fn turn_usize_to_vec_of_u8(value: usize) -> Vec<u8> {
     bytes
 }
 
-pub fn obfuscate_word(word: String) -> String {
+pub fn obfuscate_word(word: &str) -> String {
     word.chars()
         .map(|c| if c.is_alphabetic() { '*' } else { c })
         .collect()

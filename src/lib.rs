@@ -17,13 +17,10 @@ pub async fn init_rocket(
         loop {
             interval.tick().await;
 
-            let mut users = cloned_game_state.users.lock().await;
+            let users = cloned_game_state.users.lock().await;
+            let rooms = cloned_game_state.rooms.lock().await;
 
-            users.retain(|user| {
-                user.connection_state == model::ConnectionState::Connected
-            });
-
-            println!("Room {:#?}", cloned_game_state.rooms.lock().await);
+            println!("Room {:#?}", rooms);
             println!("User {:#?}", users);
         }
     });
@@ -33,13 +30,12 @@ pub async fn init_rocket(
         .mount(
             "/ws",
             rocket::routes![
-                routes::ws::ws_endpoint,
-                routes::ws::handshake_endpoint
+                routes::realtime::socket::ws_endpoint,
+                routes::realtime::binary_protocol_version_endpoint,
             ],
         )
         .mount("/dist", rocket::fs::FileServer::from("dist"))
         .attach(fairings::stage_templates())
         .manage(tokio::sync::broadcast::channel::<model::WebSocketMessage>(1024).0)
-        .manage(tokio::sync::broadcast::channel::<model::WebSocketTick>(1024).0)
         .manage(game_state)
 }
