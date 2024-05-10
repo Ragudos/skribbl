@@ -236,9 +236,11 @@ pub async fn ws_endpoint<'st>(
                     // We wrap in Arc so many can use this sink.
                     let sink = std::sync::Arc::new(rocket::futures::lock::Mutex::new(sink));
                     let reader = reader::create_websocket_reader(room_id.clone(), user_id.clone(), game_state, stream, server_messages);
+                    let writer = writer::create_websocket_writer(room_id.clone(), user_id.clone(), game_state, sink.clone(), server_messages);
 
                     tokio::select! {
                         _ = reader => {}
+                        _ = writer => {}
                     }
 
                     println!("WebSocket connection closed");

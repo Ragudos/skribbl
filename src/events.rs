@@ -36,6 +36,8 @@ pub enum ClientToServerEvents {
     PointerDown,
     PointerMove { x: f64, y: f64 },
     PointerUp,
+    // TODO: Add message event and a handler for that
+    // (guessing the word)
 }
 
 impl TryFrom<&Vec<u8>> for ClientToServerEvents {
@@ -131,7 +133,7 @@ pub enum ServerToClientEvents {
     UserJoined { user: state::User },
     UserLeft { user_id: String },
     StartGame,
-    PickAWord { words_to_pick: [&'static str; 3] },
+    PickAWord { words_to_pick: [String; 3] },
     EndGame,
     ResetRoom,
     NewTurn { user_id_to_draw: String },
