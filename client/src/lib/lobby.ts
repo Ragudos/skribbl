@@ -1,9 +1,6 @@
 import { wsHost, wsProtocol } from "../consts";
 import { STATE } from "../state";
-import { updateListOfPlayers } from "./dom/list-of-players";
-import { showRoomLink } from "./dom/room-link";
-import { showWaitingRoom } from "./dom/waiting-room";
-import { connectToSocket } from "./socket";
+import { connect } from "./socket";
 import { toast } from "./toast";
 import { processError } from "./utils";
 
@@ -34,42 +31,17 @@ export async function submit(mode: "play" | "create") {
         return;
     }
 
-    const lobbyForm = getLobbyForm();
-    const formData = new FormData(lobbyForm);
-
-    formData.set("mode", mode);
-
     try {
-        STATE.socket.connectionState = "connecting";
-
-        async function connect() {
-            const handshakePayload = await (
-                await import("./socket/handshake")
-            ).getHandshakePayload(formData);
-
-            if (!handshakePayload) {
-                return;
-            }
-
-            STATE.user = handshakePayload.user;
-            STATE.room = handshakePayload.room;
-            STATE.binaryProtocolVersion =
-                handshakePayload.binaryProtocolVersion;
-            STATE.usersInRoom = handshakePayload.usersInRoom;
-
-            await connectToSocket(
-                `${wsProtocol}://${wsHost}/ws?sid=${handshakePayload.user.id}`,
-            );
-            showWaitingRoom();
-            updateListOfPlayers();
-            showRoomLink();
-        }
+        const displayName = getDisplayName();
+        const roomId = getRoomId();
 
         await toast.promise(
             "Connecting to server...",
             "Welcome to Skribbl!",
             processError,
-            connect,
+            connect(
+                `${wsProtocol}://${wsHost}/ws?displayName=${displayName}&roomId=${roomId}&mode=${mode}`,
+            ),
         );
     } catch (_) {
         STATE.socket.connectionState = "disconnected";
@@ -78,8 +50,5 @@ export async function submit(mode: "play" | "create") {
         STATE.room = null;
         STATE.usersInRoom = [];
         STATE.binaryProtocolVersion = null;
-    } finally {
-        getPlayBtn().disabled = false;
-        getCreatePrivateRoomBtn().disabled = false;
     }
 }

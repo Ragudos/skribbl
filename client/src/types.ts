@@ -1,8 +1,22 @@
+export type PlayingState =
+    | {
+          drawing: {
+              currentWord: string;
+          };
+      }
+    | {
+          pickingAWord: {
+              wordsToPick: [string, string, string];
+          };
+      };
+
 export type RoomState =
     | "waiting"
     | {
           playing: {
-              userToDraw: string;
+              payingState: PlayingState;
+              currentUserId: string;
+              currentRound: number;
           };
       }
     | "finished";
@@ -47,19 +61,25 @@ export type GameState = {
     binaryProtocolVersion: number | null;
 };
 
-export enum WebSocketEvents {
+export enum ServerToClientEvents {
     Error = 0,
-    UserJoined = 1,
-    UserLeft = 2,
-    StartGame = 3,
-    EndGame = 4,
-    NewRound = 5,
-    NewUserToDraw = 6,
-    PointerDown = 7,
-    PointerMove = 8,
-    PointerUp = 9,
-    ChangeColor = 10,
-    Tick = 11,
-    ResetRoom = 12,
-    NewHost = 13,
+    ConnectError = 1,
+    UserJoined = 2,
+    UserLeft = 3,
+    StartGame = 4,
+    PickAWord = 5,
+    EndGame = 6,
+    ResetRoom = 7,
+    NewTurn = 8,
+    NewWord = 9,
+    NewHost = 10,
+    NewRound = 11,
+    PointerDown = 12,
+    PointerMove = 13,
+    PointerUp = 14,
+    ChangeColor = 15,
+    SendUserInfo = 16,
+    SendRoomInfo = 17,
+    SendUsersInRoomInfo = 18,
+    SendMessage = 19,
 }

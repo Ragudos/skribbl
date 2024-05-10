@@ -1,133 +1,166 @@
 import { STATE } from "../../state";
-import { WebSocketEvents } from "../../types";
+import { ServerToClientEvents } from "../../types";
 import { toast } from "../toast";
+import { getVersion } from "../utils";
 import { handleChangeColor } from "./events/change-color";
 import { handleEndGame } from "./events/end-game";
-import { handleError } from "./events/error";
+import { handleConnectError, handleError } from "./events/error";
 import { handleNewHost } from "./events/new-host";
 import { handleNewRound } from "./events/new-round";
-import { handleNewUserToDraw } from "./events/new-user-to-draw";
+import { handleNewTurn } from "./events/new-turn";
+import { handleNewWord } from "./events/new-word";
+import { handlePickAWord } from "./events/pick-a-word";
 import { handlePointerDown } from "./events/pointer-down";
 import { handlePointerMove } from "./events/pointer-move";
 import { handlePointerUp } from "./events/pointer-up";
 import { handleResetRoom } from "./events/reset-room";
+import { handleSendRoomInfo } from "./events/send-room-info";
+import { handleSendUserInfo } from "./events/send-user-info";
+import { handleSendUsersInRoom } from "./events/send-users-in-room";
 import { handleStartGame } from "./events/start-game";
-import { handleTick } from "./events/tick";
 import { handleUserJoined } from "./events/user-joined";
 import { handleUserLeft } from "./events/user-left";
 
-export async function connectToSocket(uri: string) {
-    let retryTime = 1;
-
-    function connect() {
-        STATE.socket.connectionState = "connecting";
-
+export function connectToSocket(uri: string) {
+    return new Promise((res, rej) => {
         const ws = new WebSocket(uri);
 
         ws.binaryType = "arraybuffer";
+        STATE.socket.connectionState = "connecting";
 
-        ws.addEventListener("open", () => {
-            retryTime = 1;
-            console.log("Connected to WebSocket server");
+        ws.addEventListener(
+            "open",
+            () => {
+                STATE.socket.connectionState = "connected";
+                STATE.socket.ws = ws;
 
-            STATE.socket.connectionState = "connected";
-            STATE.socket.ws = ws;
-        });
+                res(undefined);
+            },
+            { once: true },
+        );
 
-        ws.addEventListener("message", async (evt) => {
-            if (!(evt.data instanceof ArrayBuffer)) {
-                console.error("Received non-arraybuffer data from server");
-                return;
-            }
+        ws.addEventListener(
+            "error",
+            () => {
+                STATE.socket.connectionState = "disconnected";
+                rej(new Error("Failed to connect to server."));
+            },
+            { once: true },
+        );
+    });
+}
 
-            const data = Array.from(new Uint8Array(evt.data));
-
-            if (data.length < 2) {
-                console.error("Received invalid data from server");
-                return;
-            }
-
-            const version = data.splice(0, 1)[0];
-
-            if (version !== STATE.binaryProtocolVersion) {
-                console.error("Received data with invalid protocol version");
-                return;
-            }
-
-            const event = data.splice(0, 1)[0];
-
-            switch (event) {
-                case WebSocketEvents.Error:
-                    handleError(data);
-                    break;
-                case WebSocketEvents.UserJoined:
-                    handleUserJoined(data);
-                    break;
-                case WebSocketEvents.UserLeft:
-                    handleUserLeft(data);
-                    break;
-                case WebSocketEvents.StartGame:
-                    handleStartGame(data);
-                    break;
-                case WebSocketEvents.EndGame:
-                    handleEndGame(data);
-                    break;
-                case WebSocketEvents.NewRound:
-                    handleNewRound(data);
-                    break;
-                case WebSocketEvents.NewUserToDraw:
-                    handleNewUserToDraw(data);
-                    break;
-                case WebSocketEvents.PointerDown:
-                    handlePointerDown(data);
-                    break;
-                case WebSocketEvents.PointerMove:
-                    handlePointerMove(data);
-                    break;
-                case WebSocketEvents.PointerUp:
-                    handlePointerUp(data);
-                    break;
-                case WebSocketEvents.ChangeColor:
-                    handleChangeColor(data);
-                    break;
-                case WebSocketEvents.Tick:
-                    handleTick(data);
-                    break;
-                case WebSocketEvents.ResetRoom:
-                    handleResetRoom(data);
-                    break;
-                case WebSocketEvents.NewHost:
-                    handleNewHost(data);
-                    break;
-                default:
-                    console.error("Received unknown event from server");
-                    break;
-            }
-        });
-
-        ws.addEventListener("close", () => {
-            STATE.socket.connectionState = "disconnected";
-            STATE.socket.ws = null;
-        });
-
-        ws.addEventListener("error", (evt) => {
-            console.log(evt);
-            ws.close();
-
-            const timeout = retryTime;
-
-            toast.error(`An error occured. Reconnecting in ${timeout}s`);
-
-            retryTime = Math.min(retryTime * 2, 64);
-
-            setTimeout(
-                connect,
-                (() => {
-                    return timeout * 1000;
-                })(),
-            );
-        });
+export async function connect(uri: string) {
+    if (STATE.socket.connectionState === "connecting") {
+        return;
     }
 
-    connect();
+    const binaryProtocolVersionRes = await fetch("/ws/binary-protocol-version");
+    const binaryProtocolVersion = await binaryProtocolVersionRes.json();
+
+    STATE.binaryProtocolVersion = binaryProtocolVersion;
+
+    await connectToSocket(uri);
+
+    STATE.socket.ws?.addEventListener("error", onError);
+    STATE.socket.ws?.addEventListener("close", onClose);
+    STATE.socket.ws?.addEventListener("message", onMessage);
+}
+
+function onMessage(evt: any) {
+    if (!(evt.data instanceof ArrayBuffer)) {
+        console.error("Received non-binary data from server.");
+        return;
+    }
+
+    const data = Array.from(new Uint8Array(evt.data));
+
+    if (data.length < 2) {
+        console.error("Received invalid paylaod");
+        return;
+    }
+
+    const version = getVersion(data),
+        event = data.splice(0, 1)[0];
+
+    switch (event) {
+        case ServerToClientEvents.Error:
+            handleError(data);
+            break;
+        case ServerToClientEvents.ConnectError:
+            handleConnectError(data);
+            break;
+        case ServerToClientEvents.UserJoined:
+            handleUserJoined(data);
+            break;
+        case ServerToClientEvents.UserLeft:
+            handleUserLeft(data);
+            break;
+        case ServerToClientEvents.StartGame:
+            handleStartGame(data);
+            break;
+        case ServerToClientEvents.PickAWord:
+            handlePickAWord(data);
+            break;
+        case ServerToClientEvents.EndGame:
+            handleEndGame(data);
+            break;
+        case ServerToClientEvents.ResetRoom:
+            handleResetRoom(data);
+            break;
+        case ServerToClientEvents.NewTurn:
+            handleNewTurn(data);
+            break;
+        case ServerToClientEvents.NewWord:
+            handleNewWord(data);
+            break;
+        case ServerToClientEvents.NewHost:
+            handleNewHost(data);
+            break;
+        case ServerToClientEvents.NewRound:
+            handleNewRound(data);
+            break;
+        case ServerToClientEvents.PointerDown:
+            handlePointerDown(data);
+            break;
+        case ServerToClientEvents.PointerMove:
+            handlePointerMove(data);
+            break;
+        case ServerToClientEvents.PointerUp:
+            handlePointerUp(data);
+            break;
+        case ServerToClientEvents.ChangeColor:
+            handleChangeColor(data);
+            break;
+        case ServerToClientEvents.SendUserInfo:
+            handleSendUserInfo(data);
+            break;
+        case ServerToClientEvents.SendRoomInfo:
+            handleSendRoomInfo(data);
+            break;
+        case ServerToClientEvents.SendUsersInRoomInfo:
+            handleSendUsersInRoom(data);
+            break;
+        case ServerToClientEvents.SendMessage:
+            console.log("Unimplemented event: SendMessage");
+            break;
+        default:
+            console.error("Received unknown event from server.");
+            break;
+    }
+
+    console.log(STATE);
+}
+
+function onClose() {
+    STATE.socket.connectionState = "disconnected";
+    STATE.socket.ws = null;
+
+    toast.error("Disconnected from the server.");
+}
+
+function onError() {
+    STATE.socket.ws?.close();
+
+    toast.error("Something went wrong. Please reconnect to the server.");
 }

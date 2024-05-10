@@ -4,9 +4,8 @@ import { parseData } from "../../parser";
 import { toast } from "../../toast";
 
 export async function handleUserJoined(data: Array<number>) {
-    const user = parseData(data);
-
     try {
+        const user = parseData(data, "string");
         const userObj = JSON.parse(user);
 
         if (!("id" in userObj) || !("displayName" in userObj)) {

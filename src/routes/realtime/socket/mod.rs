@@ -7,6 +7,14 @@ use rocket::{
 pub mod reader;
 pub mod writer;
 
+#[derive(rocket::FromFormField)]
+pub enum WsEndpointMode {
+    #[field(value = "play")]
+    Play,
+    #[field(value = "create")]
+    Create,
+}
+
 #[derive(rocket::FromForm)]
 pub struct WsEndpointParams {
     #[field(validate = len(3..20))]
@@ -14,6 +22,7 @@ pub struct WsEndpointParams {
     pub display_name: String,
     #[field(name = "roomId")]
     pub room_id: String,
+    pub mode: WsEndpointMode,
 }
 
 #[rocket::get("/?<params..>")]
@@ -36,56 +45,171 @@ pub async fn ws_endpoint<'st>(
 
             match params {
                 Ok(params) => {
-                    if params.room_id.is_empty() {
-                        let mut rooms = game_state.rooms.lock().await;
-                        let mut users = game_state.users.lock().await;
+                    match params.mode {
+                        WsEndpointMode::Play => {
+                            if params.room_id.is_empty() {
+                                let mut rooms = game_state.rooms.lock().await;
+                                let mut users = game_state.users.lock().await;
 
-                        if let Some(available_room) = rooms.iter_mut().find(|room| {
-                            room.id == params.room_id
-                                && room.state == state::RoomState::Waiting
-                                && room.amount_of_users < room.max_users
-                        }) {
-                            let new_user_id = utils::gen_random_id();
-                            let user = state::UserBuilder::default()
-                                .id(new_user_id.clone())
-                                .display_name(params.display_name)
-                                .room_id(available_room.id.clone())
-                                .build()
-                                .unwrap();
+                                if let Some(available_room) = rooms.iter_mut().find(|room| {
+                                    room.state == state::RoomState::Waiting
+                                        && room.amount_of_users < room.max_users
+                                }) {
+                                    let new_user_id = utils::gen_random_id();
+                                    let user = state::UserBuilder::default()
+                                        .id(new_user_id.clone())
+                                        .display_name(params.display_name)
+                                        .room_id(available_room.id.clone())
+                                        .build()
+                                        .unwrap();
 
-                            users.push(user.clone());
-                            available_room.amount_of_users += 1;
+                                    users.push(user.clone());
+                                    available_room.amount_of_users += 1;
 
-                            sink.send(ws::Message::Binary(events::ServerToClientEvents::SendRoomInfo { room: available_room.clone() }.try_into().unwrap())).await?;
-                            sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUserInfo { user: user.clone() }.try_into().unwrap())).await?;
-                            sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUsersInRoomInfo {
-                                users: users
-                                    .iter()
-                                    .filter(|user| {
-                                        user.room_id == available_room.id
-                                    })
-                                    .cloned()
-                                    .collect::<Vec<state::User>>()
+                                    sink.send(ws::Message::Binary(events::ServerToClientEvents::SendRoomInfo { room: available_room.clone() }.try_into().unwrap())).await?;
+                                    sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUserInfo { user: user.clone() }.try_into().unwrap())).await?;
+                                    sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUsersInRoomInfo {
+                                        users: users
+                                            .iter()
+                                            .filter(|user| {
+                                                user.room_id == available_room.id
+                                            })
+                                            .cloned()
+                                            .collect::<Vec<state::User>>()
+                                        }
+                                        .try_into()
+                                        .unwrap()
+                                    )).await?;
+
+                                    let _ = events::WebSocketMessageBuilder::default()
+                                        .r#type(events::WebSocketMessageType::Broadcast { sender_id: new_user_id.clone() })
+                                        .room_id(available_room.id.clone())
+                                        .message(ws::Message::Binary(events::ServerToClientEvents::UserJoined { user }.try_into().unwrap()))
+                                        .build()
+                                        .unwrap().send(server_messages);
+
+                                    room_id = available_room.id.clone();
+                                    user_id = new_user_id;
+                                } else {
+                                    let new_room_id = utils::gen_random_id();
+                                    let new_user_id = utils::gen_random_id();
+                                    let room = state::RoomBuilder::default()
+                                        .id(new_room_id.clone())
+                                        .host_id(new_user_id.clone())
+                                        .build()
+                                        .unwrap();
+                                    let user = state::UserBuilder::default()
+                                        .id(new_user_id.clone())
+                                        .display_name(params.display_name)
+                                        .room_id(new_room_id.clone())
+                                        .build()
+                                        .unwrap();
+
+                                    rooms.push(room.clone());
+                                    users.push(user.clone());
+
+                                    sink.send(ws::Message::Binary(events::ServerToClientEvents::SendRoomInfo { room: room.clone() }.try_into().unwrap())).await?;
+                                    sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUserInfo { user: user.clone() }.try_into().unwrap())).await?;
+                                    sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUsersInRoomInfo { users: vec![user.clone()] }.try_into().unwrap())).await?;
+
+                                    let _ = events::WebSocketMessageBuilder::default()
+                                        .r#type(events::WebSocketMessageType::Broadcast { sender_id: new_user_id.clone() })
+                                        .room_id(new_room_id.clone())
+                                        .message(ws::Message::Binary(events::ServerToClientEvents::UserJoined { user }.try_into().unwrap()))
+                                        .build()
+                                        .unwrap().send(&server_messages);
+
+                                    room_id = new_room_id;
+                                    user_id = new_user_id;
+                                };
+                            } else {
+                                let mut rooms = game_state.rooms.lock().await;
+                                let Some(room) = rooms.iter_mut().find(|room| {
+                                    room.id == params.room_id
+                                }) else {
+                                    sink.send(
+                                        ws::Message::Binary(events::ServerToClientEvents::ConnectError {
+                                            message: "Room not found".to_string(),
+                                        }
+                                        .try_into()
+                                        .unwrap()),
+                                    )
+                                    .await?;
+                                    sink.close().await?;
+                                    return Ok(());
+                                };
+
+                                if room.state != state::RoomState::Waiting {
+                                    sink.send(
+                                        ws::Message::Binary(events::ServerToClientEvents::ConnectError {
+                                            message: "Room is not available".to_string(),
+                                        }
+                                        .try_into()
+                                        .unwrap())
+                                    )
+                                    .await?;
+                                    sink.close().await?;
+                                    return Ok(());
                                 }
-                                .try_into()
-                                .unwrap()
-                            )).await?;
 
-                            events::WebSocketMessageBuilder::default()
-                                .r#type(events::WebSocketMessageType::Broadcast { sender_id: new_user_id.clone() })
-                                .room_id(available_room.id.clone())
-                                .message(ws::Message::Binary(events::ServerToClientEvents::UserJoined { user }.try_into().unwrap()))
-                                .build()
-                                .unwrap().send(server_messages);
+                                if room.amount_of_users == room.max_users {
+                                    sink.send(
+                                        ws::Message::Binary(events::ServerToClientEvents::ConnectError {
+                                            message: "Room is full".to_string(),
+                                        }
+                                        .try_into()
+                                        .unwrap()),
+                                    )
+                                    .await?;
+                                    sink.close().await?;
+                                    return Ok(());
+                                }
 
-                            room_id = available_room.id.clone();
-                            user_id = new_user_id;
-                        } else {
+                                let new_user_id = utils::gen_random_id();
+                                let user = state::UserBuilder::default()
+                                    .id(new_user_id.clone())
+                                    .display_name(params.display_name)
+                                    .room_id(room.id.clone())
+                                    .build()
+                                    .unwrap();
+                                let mut users = game_state.users.lock().await;
+
+                                users.push(user.clone());
+                                room.amount_of_users += 1;
+
+                                sink.send(ws::Message::Binary(events::ServerToClientEvents::SendRoomInfo { room: room.clone() }.try_into().unwrap())).await?;
+                                sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUserInfo { user: user.clone() }.try_into().unwrap())).await?;
+                                sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUsersInRoomInfo {
+                                    users: users
+                                        .iter()
+                                        .filter(|user| {
+                                            user.room_id == room.id
+                                        })
+                                        .cloned()
+                                        .collect::<Vec<state::User>>()
+                                    }
+                                    .try_into()
+                                    .unwrap()
+                                )).await?;
+
+                                let _ = events::WebSocketMessageBuilder::default()
+                                    .r#type(events::WebSocketMessageType::Broadcast { sender_id: new_user_id.clone() })
+                                    .room_id(room.id.clone())
+                                    .message(ws::Message::Binary(events::ServerToClientEvents::UserJoined { user }.try_into().unwrap()))
+                                    .build()
+                                    .unwrap().send(server_messages);
+
+                                room_id = room.id.clone();
+                                user_id = new_user_id;
+                            }
+                        }
+                        WsEndpointMode::Create => {
                             let new_room_id = utils::gen_random_id();
                             let new_user_id = utils::gen_random_id();
                             let room = state::RoomBuilder::default()
                                 .id(new_room_id.clone())
                                 .host_id(new_user_id.clone())
+                                .visibility(state::Visibility::Private)
                                 .build()
                                 .unwrap();
                             let user = state::UserBuilder::default()
@@ -94,103 +218,19 @@ pub async fn ws_endpoint<'st>(
                                 .room_id(new_room_id.clone())
                                 .build()
                                 .unwrap();
+                            let mut rooms = game_state.rooms.lock().await;
+                            let mut users = game_state.users.lock().await;
 
                             rooms.push(room.clone());
                             users.push(user.clone());
 
-                            sink.send(ws::Message::Binary(events::ServerToClientEvents::SendRoomInfo { room: room.clone() }.try_into().unwrap())).await?;
+                            sink.send(ws::Message::Binary(events::ServerToClientEvents::SendRoomInfo { room }.try_into().unwrap())).await?;
                             sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUserInfo { user: user.clone() }.try_into().unwrap())).await?;
-                            sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUsersInRoomInfo { users: vec![user.clone()] }.try_into().unwrap())).await?;
-
-                            events::WebSocketMessageBuilder::default()
-                                .r#type(events::WebSocketMessageType::Broadcast { sender_id: new_user_id.clone() })
-                                .room_id(new_room_id.clone())
-                                .message(ws::Message::Binary(events::ServerToClientEvents::UserJoined { user }.try_into().unwrap()))
-                                .build()
-                                .unwrap().send(&server_messages);
+                            sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUsersInRoomInfo { users: vec![user] }.try_into().unwrap())).await?;
 
                             room_id = new_room_id;
                             user_id = new_user_id;
-                        };
-                    } else {
-                        let mut rooms = game_state.rooms.lock().await;
-                        let Some(room) = rooms.iter_mut().find(|room| {
-                            room.id == params.room_id
-                        }) else {
-                            sink.send(
-                                ws::Message::Binary(events::ServerToClientEvents::ConnectError {
-                                    message: "Room not found".to_string(),
-                                }
-                                .try_into()
-                                .unwrap()),
-                            )
-                            .await?;
-                            sink.close().await?;
-                            return Ok(());
-                        };
-
-                        if room.state != state::RoomState::Waiting {
-                            sink.send(
-                                ws::Message::Binary(events::ServerToClientEvents::ConnectError {
-                                    message: "Room is not available".to_string(),
-                                }
-                                .try_into()
-                                .unwrap())
-                            )
-                            .await?;
-                            sink.close().await?;
-                            return Ok(());
                         }
-
-                        if room.amount_of_users == room.max_users {
-                            sink.send(
-                                ws::Message::Binary(events::ServerToClientEvents::ConnectError {
-                                    message: "Room is full".to_string(),
-                                }
-                                .try_into()
-                                .unwrap()),
-                            )
-                            .await?;
-                            sink.close().await?;
-                            return Ok(());
-                        }
-
-                        let new_user_id = utils::gen_random_id();
-                        let user = state::UserBuilder::default()
-                            .id(new_user_id.clone())
-                            .display_name(params.display_name)
-                            .room_id(room.id.clone())
-                            .build()
-                            .unwrap();
-                        let mut users = game_state.users.lock().await;
-
-                        users.push(user.clone());
-                        room.amount_of_users += 1;
-
-                        sink.send(ws::Message::Binary(events::ServerToClientEvents::SendRoomInfo { room: room.clone() }.try_into().unwrap())).await?;
-                        sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUserInfo { user: user.clone() }.try_into().unwrap())).await?;
-                        sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUsersInRoomInfo {
-                            users: users
-                                .iter()
-                                .filter(|user| {
-                                    user.room_id == room.id
-                                })
-                                .cloned()
-                                .collect::<Vec<state::User>>()
-                            }
-                            .try_into()
-                            .unwrap()
-                        )).await?;
-
-                        events::WebSocketMessageBuilder::default()
-                            .r#type(events::WebSocketMessageType::Broadcast { sender_id: new_user_id.clone() })
-                            .room_id(room.id.clone())
-                            .message(ws::Message::Binary(events::ServerToClientEvents::UserJoined { user }.try_into().unwrap()))
-                            .build()
-                            .unwrap().send(server_messages);
-
-                        room_id = room.id.clone();
-                        user_id = new_user_id;
                     }
 
                     // We wrap in Arc so many can use this sink.
@@ -200,6 +240,8 @@ pub async fn ws_endpoint<'st>(
                     tokio::select! {
                         _ = reader => {}
                     }
+
+                    println!("WebSocket connection closed");
 
                     Ok(())
                 }

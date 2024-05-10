@@ -14,18 +14,28 @@ lobbyForm.addEventListener("submit", playSubmit);
 playBtn.addEventListener("click", playSubmit);
 createPrivateRoomBtn.addEventListener("click", createSubmit);
 
-function playSubmit(evt: Event) {
+async function playSubmit(evt: Event) {
     evt.preventDefault();
 
     playBtn.disabled = true;
     createPrivateRoomBtn.disabled = true;
 
-    submit("play");
+    try {
+        await submit("play");
+    } finally {
+        playBtn.disabled = false;
+        createPrivateRoomBtn.disabled = false;
+    }
 }
 
-function createSubmit() {
+async function createSubmit() {
     playBtn.disabled = true;
     createPrivateRoomBtn.disabled = true;
 
-    submit("create");
+    try {
+        await submit("create");
+    } finally {
+        playBtn.disabled = false;
+        createPrivateRoomBtn.disabled = false;
+    }
 }

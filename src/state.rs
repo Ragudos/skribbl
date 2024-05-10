@@ -39,13 +39,19 @@ impl WordToDraw {
     Ord,
 )]
 pub enum PlayingState {
+    #[serde(rename = "pickingAWord")]
     PickingAWord {
+        #[serde(rename = "wordsToPick")]
         words_to_pick: [String; 3],
         /// When the user started picking a word.
+        #[serde(skip_serializing)]
         started_at: rocket::time::OffsetDateTime,
     },
+    #[serde(rename = "drawing")]
     Drawing {
+        #[serde(rename = "currentWord")]
         current_word: String,
+        #[serde(skip_serializing)]
         started_at: rocket::time::OffsetDateTime,
     },
 }
@@ -73,7 +79,7 @@ pub enum RoomState {
     Waiting,
     #[serde(rename = "playing")]
     Playing {
-        #[serde(skip_serializing)]
+        #[serde(rename = "playingState")]
         playing_state: PlayingState,
         #[serde(rename = "currentUserId")]
         current_user_id: String,
@@ -109,6 +115,7 @@ pub struct Room {
 #[derive(rocket::serde::Serialize, derive_builder::Builder, Clone)]
 pub struct User {
     pub id: String,
+    #[serde(rename = "displayName")]
     pub display_name: String,
     #[serde(skip_serializing)]
     pub room_id: String,
