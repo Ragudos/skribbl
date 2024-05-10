@@ -62,9 +62,14 @@ export async function connect(uri: string) {
 
     await connectToSocket(uri);
 
-    STATE.socket.ws?.addEventListener("error", onError);
-    STATE.socket.ws?.addEventListener("close", onClose);
-    STATE.socket.ws?.addEventListener("message", onMessage);
+    if (!STATE.socket.ws) {
+        console.error("Reached an unreachable state.");
+        return;
+    }
+
+    STATE.socket.ws.addEventListener("error", onError);
+    STATE.socket.ws.addEventListener("close", onClose);
+    STATE.socket.ws.addEventListener("message", onMessage);
 }
 
 function onMessage(evt: any) {
