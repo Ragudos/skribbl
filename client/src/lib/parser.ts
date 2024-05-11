@@ -32,7 +32,7 @@ type DataTypes = {
  * the end of the data type's bytes, leaving the original
  * buffer with only the remaining data if there's any left.
  */
-export function parseData<K extends keyof DataTypes>(
+export function parsePartOfBinaryArray<K extends keyof DataTypes>(
     data: Array<number>,
     dataType: K,
 ): DataTypes[K] {

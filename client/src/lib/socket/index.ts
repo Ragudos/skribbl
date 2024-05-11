@@ -1,5 +1,8 @@
 import { STATE } from "../../state";
 import { ServerToClientEvents } from "../../types";
+import { updateListOfPlayers } from "../dom/list-of-players";
+import { hideShareRoomLink } from "../dom/room-link";
+import { showLobbyRoom } from "../dom/rooms";
 import { toast } from "../toast";
 import { getVersion } from "../utils";
 import { handleChangeColor } from "./events/change-color";
@@ -85,81 +88,101 @@ function onMessage(evt: any) {
         return;
     }
 
-    const version = getVersion(data),
+    const _version = getVersion(data),
         event = data.splice(0, 1)[0];
 
-    switch (event) {
-        case ServerToClientEvents.Error:
-            handleError(data);
-            break;
-        case ServerToClientEvents.ConnectError:
-            handleConnectError(data);
-            break;
-        case ServerToClientEvents.UserJoined:
-            handleUserJoined(data);
-            break;
-        case ServerToClientEvents.UserLeft:
-            handleUserLeft(data);
-            break;
-        case ServerToClientEvents.StartGame:
-            handleStartGame(data);
-            break;
-        case ServerToClientEvents.PickAWord:
-            handlePickAWord(data);
-            break;
-        case ServerToClientEvents.EndGame:
-            handleEndGame(data);
-            break;
-        case ServerToClientEvents.ResetRoom:
-            handleResetRoom(data);
-            break;
-        case ServerToClientEvents.NewTurn:
-            handleNewTurn(data);
-            break;
-        case ServerToClientEvents.NewWord:
-            handleNewWord(data);
-            break;
-        case ServerToClientEvents.NewHost:
-            handleNewHost(data);
-            break;
-        case ServerToClientEvents.NewRound:
-            handleNewRound(data);
-            break;
-        case ServerToClientEvents.PointerDown:
-            handlePointerDown(data);
-            break;
-        case ServerToClientEvents.PointerMove:
-            handlePointerMove(data);
-            break;
-        case ServerToClientEvents.PointerUp:
-            handlePointerUp(data);
-            break;
-        case ServerToClientEvents.ChangeColor:
-            handleChangeColor(data);
-            break;
-        case ServerToClientEvents.SendUserInfo:
-            handleSendUserInfo(data);
-            break;
-        case ServerToClientEvents.SendRoomInfo:
-            handleSendRoomInfo(data);
-            break;
-        case ServerToClientEvents.SendUsersInRoomInfo:
-            handleSendUsersInRoom(data);
-            break;
-        case ServerToClientEvents.SendMessage:
-            console.log("Unimplemented event: SendMessage");
-            break;
-        default:
-            console.error("Received unknown event from server.");
-            break;
+    try {
+        switch (event) {
+            case ServerToClientEvents.Error:
+                handleError(data);
+                break;
+            case ServerToClientEvents.ConnectError:
+                handleConnectError(data);
+                break;
+            case ServerToClientEvents.UserJoined:
+                handleUserJoined(data);
+                break;
+            case ServerToClientEvents.UserLeft:
+                handleUserLeft(data);
+                break;
+            case ServerToClientEvents.StartGame:
+                handleStartGame(data);
+                break;
+            case ServerToClientEvents.PickAWord:
+                handlePickAWord(data);
+                break;
+            case ServerToClientEvents.EndGame:
+                handleEndGame(data);
+                break;
+            case ServerToClientEvents.ResetRoom:
+                handleResetRoom(data);
+                break;
+            case ServerToClientEvents.NewTurn:
+                handleNewTurn(data);
+                break;
+            case ServerToClientEvents.NewWord:
+                handleNewWord(data);
+                break;
+            case ServerToClientEvents.NewHost:
+                handleNewHost(data);
+                break;
+            case ServerToClientEvents.NewRound:
+                handleNewRound(data);
+                break;
+            case ServerToClientEvents.PointerDown:
+                handlePointerDown(data);
+                break;
+            case ServerToClientEvents.PointerMove:
+                handlePointerMove(data);
+                break;
+            case ServerToClientEvents.PointerUp:
+                handlePointerUp(data);
+                break;
+            case ServerToClientEvents.ChangeColor:
+                handleChangeColor(data);
+                break;
+            case ServerToClientEvents.SendUserInfo:
+                handleSendUserInfo(data);
+                break;
+            case ServerToClientEvents.SendRoomInfo:
+                handleSendRoomInfo(data);
+                break;
+            case ServerToClientEvents.SendUsersInRoomInfo:
+                handleSendUsersInRoom(data);
+                break;
+            case ServerToClientEvents.SendMessage:
+                console.log("Unimplemented event: SendMessage");
+                break;
+            default:
+                console.error("Received unknown event from server.");
+                break;
+        }
+    } catch (err) {
+        console.error(err);
+        STATE.socket.ws?.close();
+        toast.error("An error occurred. Please try to reconnect.");
     }
 
-    console.log(STATE);
+    if (import.meta.env.DEV) {
+        console.log(STATE);
+    }
 }
 
 function onClose() {
+    STATE.socket.ws?.removeEventListener("error", onError);
+    STATE.socket.ws?.removeEventListener("close", onClose);
+    STATE.socket.ws?.removeEventListener("message", onMessage);
+
     STATE.socket.connectionState = "disconnected";
     STATE.socket.ws = null;
+    STATE.room = null;
+    STATE.user = null;
+    STATE.usersInRoom = [];
+    STATE.binaryProtocolVersion = null;
+
+    showLobbyRoom();
+    hideShareRoomLink();
+    updateListOfPlayers();
 
     toast.error("Disconnected from the server.");
 }

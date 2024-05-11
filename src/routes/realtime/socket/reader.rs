@@ -105,18 +105,19 @@ async fn on_reader_close(
         return Ok(());
     }
 
-    if room.amount_of_users == 1 {
-        reset_room(room, room_id, user_id_who_disconnected, server_messages)?;
-    } else if room.state != state::RoomState::Waiting
-        && room.state != state::RoomState::Finished
+    if room.state != state::RoomState::Waiting && room.state != state::RoomState::Finished
     {
-        handle_playing_room(
-            &mut users,
-            room,
-            room_id,
-            user_id_who_disconnected,
-            server_messages,
-        )?;
+        if room.amount_of_users == 1 {
+            reset_room(room, room_id, user_id_who_disconnected, server_messages)?;
+        } else {
+            handle_playing_room(
+                &mut users,
+                room,
+                room_id,
+                user_id_who_disconnected,
+                server_messages,
+            )?;
+        }
     }
 
     if user_id_who_disconnected == room.host_id {

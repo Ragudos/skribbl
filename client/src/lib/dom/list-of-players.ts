@@ -30,20 +30,21 @@ export function playerLeft(userId: string) {
 
     const playerElement = document.getElementById(`player-${userId}`);
 
-    if (playerElement) {
-        playerElement.remove();
-
-        if (STATE.usersInRoom.length === 0) {
-            const listOfPlayers = document.getElementById(
-                "list-of-players",
-            ) as HTMLElement;
-
-            listOfPlayers.setAttribute("hidden", "");
-        }
-    } else {
+    if (!playerElement) {
         console.error(
             "Either received invalid user ID or user's info is not in the list of players in the DOM",
         );
+        return;
+    }
+
+    playerElement.remove();
+
+    if (STATE.usersInRoom.length === 0) {
+        const listOfPlayers = document.getElementById(
+            "list-of-players",
+        ) as HTMLElement;
+
+        listOfPlayers.setAttribute("hidden", "");
     }
 }
 
@@ -69,7 +70,6 @@ export function addUserToDOM(user: User) {
     }
 
     if (STATE.room!.hostId === user.id) {
-        console.log(STATE);
         const hostBadge = document.createElement("span");
         hostBadge.textContent = "Host";
         hostBadge.classList.add("badge");
@@ -82,5 +82,38 @@ export function addUserToDOM(user: User) {
 
     if (listOfPlayers.getAttribute("hidden")) {
         listOfPlayers.removeAttribute("hidden");
+    }
+}
+
+export function updateHost(hostId: string) {
+    const previousHost = document.querySelector("[data-host='true']");
+
+    if (previousHost) {
+        previousHost.removeAttribute("data-host");
+        previousHost.querySelector(".badge")?.remove();
+
+        if (previousHost.id.split("-")[1] === STATE.user?.id) {
+            document.body.dataset.host = "false";
+        }
+    }
+
+    const playerElement = document.getElementById(`player-${hostId}`);
+
+    if (!playerElement) {
+        console.error(
+            "Received invalid user ID or user's info is not in the list of players in the DOM",
+        );
+        return;
+    }
+
+    const hostBadge = document.createElement("span");
+    hostBadge.textContent = "Host";
+    hostBadge.classList.add("badge");
+
+    playerElement.setAttribute("data-host", "true");
+    playerElement.appendChild(hostBadge);
+
+    if (hostId === STATE.user?.id) {
+        document.body.dataset.host = "true";
     }
 }

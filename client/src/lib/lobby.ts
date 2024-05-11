@@ -1,4 +1,9 @@
-import { wsHost, wsProtocol } from "../consts";
+import {
+    MAX_DISPLAY_NAME_LENGTH,
+    MIN_DISPLAY_NAME_LENGTH,
+    wsHost,
+    wsProtocol,
+} from "../consts";
 import { STATE } from "../state";
 import { connect } from "./socket";
 import { toast } from "./toast";
@@ -34,6 +39,14 @@ export async function submit(mode: "play" | "create") {
     try {
         const displayName = getDisplayName();
         const roomId = getRoomId();
+
+        if (
+            displayName.length < MIN_DISPLAY_NAME_LENGTH ||
+            displayName.length > MAX_DISPLAY_NAME_LENGTH
+        ) {
+            toast.error("Display name must be between 3 and 20 characters.");
+            return;
+        }
 
         await toast.promise(
             "Connecting to server...",

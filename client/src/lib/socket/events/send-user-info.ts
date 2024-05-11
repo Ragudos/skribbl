@@ -1,17 +1,17 @@
 import { STATE } from "../../../state";
-import { parseData } from "../../parser";
+import { parsePartOfBinaryArray } from "../../parser";
 
 export function handleSendUserInfo(data: Array<number>) {
-    try {
-        const stringifiedUser = parseData(data, "string");
-        const user = JSON.parse(stringifiedUser);
+    const stringifiedUser = parsePartOfBinaryArray(data, "string");
+    const user = JSON.parse(stringifiedUser);
 
-        if (!("id" in user) || !("displayName" in user)) {
-            throw new Error("Received invalid payload");
-        }
+    if (!("id" in user) || !("displayName" in user)) {
+        throw new Error("Received invalid payload");
+    }
 
-        STATE.user = user;
-    } catch (err) {
-        console.error(err);
+    STATE.user = user;
+
+    if (user.id === STATE.room?.hostId) {
+        document.body.dataset.host = "true";
     }
 }
