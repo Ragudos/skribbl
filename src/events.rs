@@ -1,4 +1,6 @@
-use crate::{state, utils};
+use rocket::response::stream::Event;
+
+use crate::{state, utils, vec_with_slices};
 
 #[derive(Clone)]
 pub enum WebSocketMessageType {
@@ -36,6 +38,9 @@ pub enum ClientToServerEvents {
     PointerDown,
     PointerMove { x: f64, y: f64 },
     PointerUp,
+    PointerLeave,
+    ChangeColor { color: String },
+    Message { message: String },
     // TODO: Add message event and a handler for that
     // (guessing the word)
 }
@@ -121,6 +126,50 @@ impl TryFrom<&Vec<u8>> for ClientToServerEvents {
                 Ok(Self::PointerMove { x, y })
             }
             4 => Ok(Self::PointerUp),
+            5 => Ok(Self::PointerLeave),
+            6 => {
+                let length_of_color_length_indicator =
+                    *value.get(2).ok_or("Data is too short")?;
+                let length_of_color_start_position = 3;
+                let length_of_color_end_position = length_of_color_start_position
+                    + length_of_color_length_indicator as usize;
+                let length_of_color: usize = value
+                    .get(length_of_color_start_position..length_of_color_end_position)
+                    .ok_or("Data is too short")?
+                    .iter()
+                    .fold(0, |acc, x| acc + *x as usize);
+                let color_end_position = length_of_color_end_position + length_of_color;
+                let color = String::from_utf8(
+                    value
+                        .get(length_of_color_end_position..color_end_position)
+                        .ok_or("Data is too short")?
+                        .to_vec(),
+                )?;
+
+                Ok(Self::ChangeColor { color })
+            }
+            7 => {
+                let length_of_message_length_indicator =
+                    *value.get(2).ok_or("Data is too short")?;
+                let length_of_message_start_position = 3;
+                let length_of_message_end_position = length_of_message_start_position
+                    + length_of_message_length_indicator as usize;
+                let length_of_message: usize = value
+                    .get(length_of_message_start_position..length_of_message_end_position)
+                    .ok_or("Data is too short")?
+                    .iter()
+                    .fold(0, |acc, x| acc + *x as usize);
+                let message_end_position =
+                    length_of_message_end_position + length_of_message;
+                let message = String::from_utf8(
+                    value
+                        .get(length_of_message_end_position..message_end_position)
+                        .ok_or("Data is too short")?
+                        .to_vec(),
+                )?;
+
+                Ok(Self::Message { message })
+            }
             _ => Err("Invalid event type".into()),
         }
     }
@@ -128,375 +177,320 @@ impl TryFrom<&Vec<u8>> for ClientToServerEvents {
 
 #[derive(Clone)]
 pub enum ServerToClientEvents {
-    Error { message: String },
-    ConnectError { message: String },
-    UserJoined { user: state::User },
-    UserLeft { user_id: String },
+    Error {
+        message: String,
+    },
+    ConnectError {
+        message: String,
+    },
+    UserJoined {
+        user: state::User,
+    },
+    UserLeft {
+        user_id: String,
+    },
     StartGame,
-    PickAWord { words_to_pick: [String; 3] },
+    PickAWord {
+        words_to_pick: [String; 3],
+    },
     EndGame,
     ResetRoom,
-    NewTurn { user_id_to_draw: String },
-    NewWord { word: String },
-    NewHost { user_id: String },
-    NewRound { round: u8 },
+    NewTurn {
+        user_id_to_draw: String,
+    },
+    NewWord {
+        word: String,
+    },
+    NewHost {
+        user_id: String,
+    },
+    NewRound {
+        round: u8,
+    },
     PointerDown,
-    PointerMove { x: f64, y: f64 },
+    PointerMove {
+        x: f64,
+        y: f64,
+    },
     PointerUp,
-    ChangeColor { color: String },
-    SendUserInfo { user: state::User },
-    SendRoomInfo { room: state::Room },
-    SendUsersInRoomInfo { users: Vec<state::User> },
-    Message { message: String },
+    PointerLeave,
+    ChangeColor {
+        color: String,
+    },
+    SendGameState {
+        room: state::Room,
+        user: state::User,
+        users_in_room: Vec<state::User>,
+    },
+    Message {
+        message: String,
+    },
 }
 
 impl TryFrom<ServerToClientEvents> for Vec<u8> {
     type Error = Box<dyn std::error::Error>;
 
     fn try_from(value: ServerToClientEvents) -> Result<Self, Self::Error> {
-        let borrowed_value = &value;
+        let event_as_borrowed = &value;
 
-        match borrowed_value {
+        match event_as_borrowed {
             ServerToClientEvents::Error { message }
             | ServerToClientEvents::ConnectError { message } => {
                 let message_as_bytes = message.as_bytes();
                 let length_of_message =
                     utils::turn_usize_to_vec_of_u8(message_as_bytes.len());
                 let length_of_message_length_indicator = length_of_message.len();
-                let mut message = Vec::with_capacity(
-                    2 + 1 + length_of_message_length_indicator + message_as_bytes.len(),
-                );
 
-                message.push(utils::consts::BINARY_PROTOCOL_VERSION);
-                message.push(borrowed_value.try_into().unwrap());
-                message.push(length_of_message_length_indicator as u8);
-                message.extend_from_slice(&length_of_message);
-                message.extend_from_slice(message_as_bytes);
-
-                Ok(message)
+                Ok(vec_with_slices![
+                    utils::consts::BINARY_PROTOCOL_VERSION,
+                    event_as_borrowed.into(),
+                    length_of_message_length_indicator.try_into()?;
+                    &length_of_message,
+                    message_as_bytes
+                ])
             }
             ServerToClientEvents::UserJoined { user } => {
-                let stringified_user = serde_json::to_string(&user)?;
-                let stringified_user_as_bytes = stringified_user.as_bytes();
+                let stringified_user_as_bytes = serde_json::to_vec(&user)?;
                 let length_of_stringified_user =
                     utils::turn_usize_to_vec_of_u8(stringified_user_as_bytes.len());
                 let length_of_stringified_user_length_indicator =
                     length_of_stringified_user.len();
 
-                let mut message = Vec::with_capacity(
-                    2 + 1
-                        + length_of_stringified_user_length_indicator
-                        + stringified_user_as_bytes.len(),
-                );
-
-                message.push(utils::consts::BINARY_PROTOCOL_VERSION);
-                message.push(borrowed_value.try_into().unwrap());
-                message.push(length_of_stringified_user_length_indicator as u8);
-                message.extend_from_slice(&length_of_stringified_user);
-                message.extend_from_slice(stringified_user_as_bytes);
-
-                Ok(message)
+                Ok(vec_with_slices!(
+                    utils::consts::BINARY_PROTOCOL_VERSION,
+                    event_as_borrowed.into(),
+                    length_of_stringified_user_length_indicator.try_into()?;
+                    &length_of_stringified_user,
+                    &stringified_user_as_bytes
+                ))
             }
             ServerToClientEvents::UserLeft { user_id } => {
                 let user_id_as_bytes = user_id.as_bytes();
                 let length_of_user_id =
                     utils::turn_usize_to_vec_of_u8(user_id_as_bytes.len());
                 let length_of_user_id_length_indicator = length_of_user_id.len();
-                let mut message = Vec::with_capacity(
-                    2 + 1 + length_of_user_id_length_indicator + user_id_as_bytes.len(),
-                );
 
-                message.push(utils::consts::BINARY_PROTOCOL_VERSION);
-                message.push(borrowed_value.try_into().unwrap());
-                message.push(length_of_user_id_length_indicator as u8);
-                message.extend_from_slice(&length_of_user_id);
-                message.extend_from_slice(user_id_as_bytes);
-
-                Ok(message)
-            }
-            ServerToClientEvents::StartGame => {
-                let message = vec![
+                Ok(vec_with_slices!(
                     utils::consts::BINARY_PROTOCOL_VERSION,
-                    borrowed_value.try_into()?,
-                ];
-                Ok(message)
+                    event_as_borrowed.into(),
+                    length_of_user_id_length_indicator.try_into()?;
+                    &length_of_user_id,
+                    user_id_as_bytes
+                ))
             }
+            ServerToClientEvents::StartGame => Ok(vec![
+                utils::consts::BINARY_PROTOCOL_VERSION,
+                event_as_borrowed.into(),
+            ]),
             ServerToClientEvents::PickAWord { words_to_pick } => {
-                let stringified_words_to_pick = serde_json::to_string(&words_to_pick)?;
                 let stringified_words_to_pick_as_bytes =
-                    stringified_words_to_pick.as_bytes();
+                    serde_json::to_vec(&words_to_pick)?;
                 let length_of_stringified_words_to_pick = utils::turn_usize_to_vec_of_u8(
                     stringified_words_to_pick_as_bytes.len(),
                 );
                 let length_of_stringified_words_to_pick_length_indicator =
                     length_of_stringified_words_to_pick.len();
 
-                let mut message = Vec::with_capacity(
-                    2 + 1
-                        + length_of_stringified_words_to_pick_length_indicator
-                        + stringified_words_to_pick_as_bytes.len(),
-                );
-
-                message.push(utils::consts::BINARY_PROTOCOL_VERSION);
-                message.push(borrowed_value.try_into()?);
-                message.push(length_of_stringified_words_to_pick_length_indicator as u8);
-                message.extend_from_slice(&length_of_stringified_words_to_pick);
-                message.extend_from_slice(stringified_words_to_pick_as_bytes);
-
-                Ok(message)
-            }
-            ServerToClientEvents::EndGame => {
-                let message = vec![
+                Ok(vec_with_slices!(
                     utils::consts::BINARY_PROTOCOL_VERSION,
-                    borrowed_value.try_into()?,
-                ];
-                Ok(message)
+                    event_as_borrowed.into(),
+                    length_of_stringified_words_to_pick_length_indicator.try_into()?;
+                    &length_of_stringified_words_to_pick,
+                    &stringified_words_to_pick_as_bytes
+                ))
             }
-            ServerToClientEvents::ResetRoom => {
-                let message = vec![
-                    utils::consts::BINARY_PROTOCOL_VERSION,
-                    borrowed_value.try_into()?,
-                ];
-                Ok(message)
-            }
+            ServerToClientEvents::EndGame => Ok(vec![
+                utils::consts::BINARY_PROTOCOL_VERSION,
+                event_as_borrowed.into(),
+            ]),
+            ServerToClientEvents::ResetRoom => Ok(vec![
+                utils::consts::BINARY_PROTOCOL_VERSION,
+                event_as_borrowed.into(),
+            ]),
             ServerToClientEvents::NewTurn { user_id_to_draw } => {
                 let user_id_to_draw_as_bytes = user_id_to_draw.as_bytes();
                 let length_of_user_id_to_draw =
                     utils::turn_usize_to_vec_of_u8(user_id_to_draw_as_bytes.len());
                 let length_of_user_id_to_draw_length_indicator =
                     length_of_user_id_to_draw.len();
-                let mut message = Vec::with_capacity(
-                    2 + 1
-                        + length_of_user_id_to_draw_length_indicator
-                        + user_id_to_draw_as_bytes.len(),
-                );
 
-                message.push(utils::consts::BINARY_PROTOCOL_VERSION);
-                message.push(borrowed_value.try_into().unwrap());
-                message.push(length_of_user_id_to_draw_length_indicator as u8);
-                message.extend_from_slice(&length_of_user_id_to_draw);
-                message.extend_from_slice(user_id_to_draw_as_bytes);
-
-                Ok(message)
+                Ok(vec_with_slices!(
+                    utils::consts::BINARY_PROTOCOL_VERSION,
+                    event_as_borrowed.into(),
+                    length_of_user_id_to_draw_length_indicator.try_into()?;
+                    &length_of_user_id_to_draw,
+                    user_id_to_draw_as_bytes
+                ))
             }
             ServerToClientEvents::NewWord { word } => {
                 let word_as_bytes = word.as_bytes();
                 let length_of_word = utils::turn_usize_to_vec_of_u8(word_as_bytes.len());
                 let length_of_word_length_indicator = length_of_word.len();
-                let mut message = Vec::with_capacity(
-                    2 + 1 + length_of_word_length_indicator + word_as_bytes.len(),
-                );
 
-                message.push(utils::consts::BINARY_PROTOCOL_VERSION);
-                message.push(borrowed_value.try_into().unwrap());
-                message.push(length_of_word_length_indicator as u8);
-                message.extend_from_slice(&length_of_word);
-                message.extend_from_slice(word_as_bytes);
-
-                Ok(message)
-            }
-            ServerToClientEvents::NewHost { user_id } => {
-                let user_id_as_bytes = user_id.as_bytes();
-                let length_of_user_id =
-                    utils::turn_usize_to_vec_of_u8(user_id_as_bytes.len());
-                let length_of_user_id_length_indicator = length_of_user_id.len();
-                let mut message = Vec::with_capacity(
-                    2 + 1 + length_of_user_id_length_indicator + user_id_as_bytes.len(),
-                );
-
-                message.push(utils::consts::BINARY_PROTOCOL_VERSION);
-                message.push(borrowed_value.try_into().unwrap());
-                message.push(length_of_user_id_length_indicator as u8);
-                message.extend_from_slice(&length_of_user_id);
-                message.extend_from_slice(user_id_as_bytes);
-
-                Ok(message)
+                Ok(vec_with_slices!(
+                    utils::consts::BINARY_PROTOCOL_VERSION,
+                    event_as_borrowed.into(),
+                    length_of_word_length_indicator.try_into()?;
+                    &length_of_word,
+                    word_as_bytes
+                ))
             }
             ServerToClientEvents::NewRound { round } => {
                 let round_as_bytes = round.to_be_bytes();
                 let length_of_round =
                     utils::turn_usize_to_vec_of_u8(round_as_bytes.len());
                 let length_of_round_length_indicator = length_of_round.len();
-                let mut message = Vec::with_capacity(
-                    2 + 1 + length_of_round_length_indicator + round_as_bytes.len(),
-                );
 
-                message.push(utils::consts::BINARY_PROTOCOL_VERSION);
-                message.push(borrowed_value.try_into().unwrap());
-                message.push(length_of_round_length_indicator as u8);
-                message.extend_from_slice(&length_of_round);
-                message.extend_from_slice(&round_as_bytes);
-
-                Ok(message)
-            }
-            ServerToClientEvents::PointerDown => {
-                let message = vec![
+                Ok(vec_with_slices!(
                     utils::consts::BINARY_PROTOCOL_VERSION,
-                    borrowed_value.try_into()?,
-                ];
-                Ok(message)
+                    event_as_borrowed.into(),
+                    length_of_round_length_indicator.try_into()?;
+                    &length_of_round,
+                    &round_as_bytes
+                ))
             }
+            ServerToClientEvents::NewHost { user_id } => {
+                let user_id_as_bytes = user_id.as_bytes();
+                let length_of_user_id =
+                    utils::turn_usize_to_vec_of_u8(user_id_as_bytes.len());
+                let length_of_user_id_length_indicator = length_of_user_id.len();
+
+                Ok(vec_with_slices!(
+                    utils::consts::BINARY_PROTOCOL_VERSION,
+                    event_as_borrowed.into(),
+                    length_of_user_id_length_indicator.try_into()?;
+                    &length_of_user_id,
+                    user_id_as_bytes
+                ))
+            }
+            ServerToClientEvents::PointerDown => Ok(vec![
+                utils::consts::BINARY_PROTOCOL_VERSION,
+                event_as_borrowed.into(),
+            ]),
             ServerToClientEvents::PointerMove { x, y } => {
                 let x_as_bytes = x.to_be_bytes();
                 let length_of_x = utils::turn_usize_to_vec_of_u8(x_as_bytes.len());
                 let length_of_x_length_indicator = length_of_x.len();
+
                 let y_as_bytes = y.to_be_bytes();
                 let length_of_y = utils::turn_usize_to_vec_of_u8(y_as_bytes.len());
                 let length_of_y_length_indicator = length_of_y.len();
-                let mut message = Vec::with_capacity(
-                    2 + 1
-                        + length_of_x_length_indicator
-                        + x_as_bytes.len()
-                        + length_of_y_length_indicator
-                        + y_as_bytes.len(),
-                );
 
-                message.push(utils::consts::BINARY_PROTOCOL_VERSION);
-                message.push(borrowed_value.try_into().unwrap());
-                message.push(length_of_x_length_indicator as u8);
-                message.extend_from_slice(&length_of_x);
-                message.extend_from_slice(&x_as_bytes);
-                message.push(length_of_y_length_indicator as u8);
-                message.extend_from_slice(&length_of_y);
-                message.extend_from_slice(&y_as_bytes);
-
-                Ok(message)
-            }
-            ServerToClientEvents::PointerUp => {
-                let message = vec![
+                Ok(vec_with_slices!(
                     utils::consts::BINARY_PROTOCOL_VERSION,
-                    borrowed_value.try_into()?,
-                ];
-                Ok(message)
+                    event_as_borrowed.into();
+                    vec_with_slices!(
+                        length_of_x_length_indicator.try_into()?;
+                        &length_of_x,
+                        &x_as_bytes
+                    ).as_slice(),
+                    vec_with_slices!(
+                        length_of_y_length_indicator.try_into()?;
+                        &length_of_y,
+                        &y_as_bytes
+                    ).as_slice()
+                ))
+            }
+            ServerToClientEvents::PointerUp | ServerToClientEvents::PointerLeave => {
+                Ok(vec![
+                    utils::consts::BINARY_PROTOCOL_VERSION,
+                    event_as_borrowed.into(),
+                ])
             }
             ServerToClientEvents::ChangeColor { color } => {
                 let color_as_bytes = color.as_bytes();
                 let length_of_color =
                     utils::turn_usize_to_vec_of_u8(color_as_bytes.len());
                 let length_of_color_length_indicator = length_of_color.len();
-                let mut message = Vec::with_capacity(
-                    2 + 1 + length_of_color_length_indicator + color_as_bytes.len(),
-                );
 
-                message.push(utils::consts::BINARY_PROTOCOL_VERSION);
-                message.push(borrowed_value.try_into().unwrap());
-                message.push(length_of_color_length_indicator as u8);
-                message.extend_from_slice(&length_of_color);
-                message.extend_from_slice(color_as_bytes);
-
-                Ok(message)
+                Ok(vec_with_slices!(
+                    utils::consts::BINARY_PROTOCOL_VERSION,
+                    event_as_borrowed.into(),
+                    length_of_color_length_indicator.try_into()?;
+                    &length_of_color,
+                    color_as_bytes
+                ))
             }
-            ServerToClientEvents::SendUserInfo { user } => {
-                let stringified_user = serde_json::to_string(&user)?;
-                let stringified_user_as_bytes = stringified_user.as_bytes();
-                let length_of_stringified_user =
-                    utils::turn_usize_to_vec_of_u8(stringified_user_as_bytes.len());
-                let length_of_stringified_user_length_indicator =
-                    length_of_stringified_user.len();
-                let mut message = Vec::with_capacity(
-                    2 + 1
-                        + length_of_stringified_user_length_indicator
-                        + stringified_user_as_bytes.len(),
-                );
+            ServerToClientEvents::SendGameState {
+                room,
+                user,
+                users_in_room,
+            } => {
+                let room_as_bytes = serde_json::to_vec(room)?;
+                let length_of_room = utils::turn_usize_to_vec_of_u8(room_as_bytes.len());
+                let length_of_room_length_indicator = length_of_room.len();
 
-                message.push(utils::consts::BINARY_PROTOCOL_VERSION);
-                message.push(borrowed_value.try_into().unwrap());
-                message.push(length_of_stringified_user_length_indicator as u8);
-                message.extend_from_slice(&length_of_stringified_user);
-                message.extend_from_slice(stringified_user_as_bytes);
+                let user_as_bytes = serde_json::to_vec(user)?;
+                let length_of_user = utils::turn_usize_to_vec_of_u8(user_as_bytes.len());
+                let length_of_user_length_indicator = length_of_user.len();
 
-                Ok(message)
-            }
-            ServerToClientEvents::SendRoomInfo { room } => {
-                let stringified_room = serde_json::to_string(&room)?;
-                let stringified_room_as_bytes = stringified_room.as_bytes();
-                let length_of_stringified_room =
-                    utils::turn_usize_to_vec_of_u8(stringified_room_as_bytes.len());
-                let length_of_stringified_room_length_indicator =
-                    length_of_stringified_room.len();
-                let mut message = Vec::with_capacity(
-                    2 + 1
-                        + length_of_stringified_room_length_indicator
-                        + stringified_room_as_bytes.len(),
-                );
+                let users_in_room_as_bytes = serde_json::to_vec(users_in_room)?;
+                let length_of_users_in_room =
+                    utils::turn_usize_to_vec_of_u8(users_in_room_as_bytes.len());
+                let length_of_users_in_room_length_indicator =
+                    length_of_users_in_room.len();
 
-                message.push(utils::consts::BINARY_PROTOCOL_VERSION);
-                message.push(borrowed_value.try_into().unwrap());
-                message.push(length_of_stringified_room_length_indicator as u8);
-                message.extend_from_slice(&length_of_stringified_room);
-                message.extend_from_slice(stringified_room_as_bytes);
-
-                Ok(message)
-            }
-            ServerToClientEvents::SendUsersInRoomInfo { users } => {
-                let stringified_users = serde_json::to_string(&users)?;
-                let stringified_users_as_bytes = stringified_users.as_bytes();
-                let length_of_stringified_users =
-                    utils::turn_usize_to_vec_of_u8(stringified_users_as_bytes.len());
-                let length_of_stringified_users_length_indicator =
-                    length_of_stringified_users.len();
-                let mut message = Vec::with_capacity(
-                    2 + 1
-                        + length_of_stringified_users_length_indicator
-                        + stringified_users_as_bytes.len(),
-                );
-
-                message.push(utils::consts::BINARY_PROTOCOL_VERSION);
-                message.push(borrowed_value.try_into().unwrap());
-                message.push(length_of_stringified_users_length_indicator as u8);
-                message.extend_from_slice(&length_of_stringified_users);
-                message.extend_from_slice(stringified_users_as_bytes);
-
-                Ok(message)
+                Ok(vec_with_slices![
+                    utils::consts::BINARY_PROTOCOL_VERSION,
+                    event_as_borrowed.into();
+                    vec_with_slices!(
+                        length_of_room_length_indicator.try_into()?;
+                        &length_of_room,
+                        &room_as_bytes
+                    ).as_slice(),
+                    vec_with_slices!(
+                        length_of_user_length_indicator.try_into()?;
+                        &length_of_user,
+                        &user_as_bytes
+                    ).as_slice(),
+                    vec_with_slices!(
+                        length_of_users_in_room_length_indicator.try_into()?;
+                        &length_of_users_in_room,
+                        &users_in_room_as_bytes
+                    ).as_slice()
+                ])
             }
             ServerToClientEvents::Message { message } => {
                 let message_as_bytes = message.as_bytes();
                 let length_of_message =
                     utils::turn_usize_to_vec_of_u8(message_as_bytes.len());
                 let length_of_message_length_indicator = length_of_message.len();
-                let mut message = Vec::with_capacity(
-                    2 + 1 + length_of_message_length_indicator + message_as_bytes.len(),
-                );
 
-                message.push(utils::consts::BINARY_PROTOCOL_VERSION);
-                message.push(borrowed_value.try_into().unwrap());
-                message.push(length_of_message_length_indicator as u8);
-                message.extend_from_slice(&length_of_message);
-                message.extend_from_slice(message_as_bytes);
-
-                Ok(message)
+                Ok(vec_with_slices!(
+                    utils::consts::BINARY_PROTOCOL_VERSION,
+                    event_as_borrowed.into(),
+                    length_of_message_length_indicator.try_into()?;
+                    &length_of_message,
+                    message_as_bytes
+                ))
             }
         }
     }
 }
 
-impl TryFrom<&ServerToClientEvents> for u8 {
-    type Error = Box<dyn std::error::Error>;
-
-    fn try_from(
-        value: &ServerToClientEvents,
-    ) -> Result<Self, <u8 as TryFrom<&ServerToClientEvents>>::Error> {
+// We borrow since we only need to see what variant is being converted.
+impl From<&ServerToClientEvents> for u8 {
+    fn from(value: &ServerToClientEvents) -> Self {
         match value {
-            ServerToClientEvents::Error { .. } => Ok(0),
-            ServerToClientEvents::ConnectError { .. } => Ok(1),
-            ServerToClientEvents::UserJoined { .. } => Ok(2),
-            ServerToClientEvents::UserLeft { .. } => Ok(3),
-            ServerToClientEvents::StartGame => Ok(4),
-            ServerToClientEvents::PickAWord { .. } => Ok(5),
-            ServerToClientEvents::EndGame => Ok(6),
-            ServerToClientEvents::ResetRoom => Ok(7),
-            ServerToClientEvents::NewTurn { .. } => Ok(8),
-            ServerToClientEvents::NewWord { .. } => Ok(9),
-            ServerToClientEvents::NewHost { .. } => Ok(10),
-            ServerToClientEvents::NewRound { .. } => Ok(11),
-            ServerToClientEvents::PointerDown => Ok(12),
-            ServerToClientEvents::PointerMove { .. } => Ok(13),
-            ServerToClientEvents::PointerUp => Ok(14),
-            ServerToClientEvents::ChangeColor { .. } => Ok(15),
-            ServerToClientEvents::SendUserInfo { .. } => Ok(16),
-            ServerToClientEvents::SendRoomInfo { .. } => Ok(17),
-            ServerToClientEvents::SendUsersInRoomInfo { .. } => Ok(18),
-            ServerToClientEvents::Message { .. } => Ok(19),
+            ServerToClientEvents::Error { .. } => 0,
+            ServerToClientEvents::ConnectError { .. } => 1,
+            ServerToClientEvents::UserJoined { .. } => 2,
+            ServerToClientEvents::UserLeft { .. } => 3,
+            ServerToClientEvents::StartGame => 4,
+            ServerToClientEvents::PickAWord { .. } => 5,
+            ServerToClientEvents::EndGame => 6,
+            ServerToClientEvents::ResetRoom => 7,
+            ServerToClientEvents::NewTurn { .. } => 8,
+            ServerToClientEvents::NewWord { .. } => 9,
+            ServerToClientEvents::NewRound { .. } => 10,
+            ServerToClientEvents::NewHost { .. } => 11,
+            ServerToClientEvents::PointerDown => 12,
+            ServerToClientEvents::PointerMove { .. } => 13,
+            ServerToClientEvents::PointerUp => 14,
+            ServerToClientEvents::PointerLeave => 15,
+            ServerToClientEvents::ChangeColor { .. } => 16,
+            ServerToClientEvents::SendGameState { .. } => 17,
+            ServerToClientEvents::Message { .. } => 18,
         }
     }
 }

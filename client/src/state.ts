@@ -11,4 +11,6 @@ export const STATE: GameState = {
 
     usersInRoom: [],
     binaryProtocolVersion: null,
+
+    canvas: null,
 };

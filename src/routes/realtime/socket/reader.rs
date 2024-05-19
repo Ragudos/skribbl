@@ -42,9 +42,7 @@ pub async fn create_websocket_reader(
 
                 // Put this outside so we don't have to clone the data
                 let _ = events::WebSocketMessageBuilder::default()
-                    .r#type(events::WebSocketMessageType::Broadcast {
-                        sender_id: user_id.clone(),
-                    })
+                    .r#type(events::WebSocketMessageType::Everyone)
                     .room_id(room_id.clone())
                     .message(ws::Message::Binary(data))
                     .build()?
@@ -374,6 +372,24 @@ async fn start_game_event(
         .find(|room| room.id == room_id)
         .ok_or("Room not found")?;
 
+    if room.amount_of_users == 1 {
+        let _ = events::WebSocketMessageBuilder::default()
+            .room_id(room_id.to_string())
+            .r#type(events::WebSocketMessageType::User {
+                receiver_id: user_id.to_string(),
+            })
+            .message(ws::Message::Binary(
+                events::ServerToClientEvents::Error {
+                    message: "Need at least 2 players to start the game".to_string(),
+                }
+                .try_into()?,
+            ))
+            .build()?
+            .send(server_messages);
+
+        return Ok(WebSocketOperationResult::Continue);
+    }
+
     if room.host_id != user_id {
         let _ = events::WebSocketMessageBuilder::default()
             .room_id(room_id.to_string())
@@ -412,6 +428,8 @@ async fn start_game_event(
 
     let users = game_state.users.lock().await;
     let Ok(user_to_draw) = utils::choose_user_in_a_room_randomly(&users, room_id) else {
+        println!("User to draw not found");
+
         let Some(room_idx) = rooms.iter().position(|room| room.id == room_id) else {
             return Ok(WebSocketOperationResult::Continue);
         };

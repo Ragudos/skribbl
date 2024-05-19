@@ -11,47 +11,79 @@
         <noscript>
             <h1>Skribbl requires JavaScript to run.</h1>
         </noscript>
-        <div id="room-link" hidden>
-            <div>
-                Share this link with your friends to invite them to this room:
-                <input type="text" id="room-link-input" readonly />
-                <button type="button" data-copy-btn="room-link-input">
-                    Copy
-                </button>
-            </div>
-        </div>
-        <div class="main-container">
-            <ul id="list-of-players" hidden></ul>
-            <div class="rooms" id="lobby" data-current="true">
-                <div>
-                    <form id="lobby-form" action novalidate>
-                        <input
-                            type="text"
-                            id="display-name"
-                            name="displayName"
-                            placeholder="Display Name"
-                            minlength="3"
-                            maxlength="20"
-                            required />
-                        <input
-                            type="hidden"
-                            value="{{roomId}}"
-                            id="room-id"
-                            name="roomId"
-                            readonly />
-                    </form>
-                    <button type="button" id="play-btn">
-                        Play
-                    </button>
-                    <button type="button" id="create-private-room-btn">
-                        Create Private Room
-                    </button>
-                </div>
-            </div>
-            <div class="rooms" id="waiting-room">
-
-            </div>
-        </div>
+        <div id="app">
+			<div class="main-container">
+				<ul id="list-of-players" hidden></ul>
+				<div class="rooms" id="lobby" data-current="true">
+					<div>
+						<form id="lobby-form" action novalidate>
+							<input
+								type="text"
+								id="display-name"
+								name="displayName"
+								placeholder="Display Name"
+								minlength="3"
+								maxlength="20"
+								required />
+							<input
+								type="hidden"
+								value="{{roomId}}"
+								id="room-id"
+								name="roomId"
+								readonly />
+						</form>
+						<button type="button" id="play-btn">
+							Play
+						</button>
+						<button type="button" id="create-private-room-btn">
+							Create Private Room
+						</button>
+					</div>
+				</div>
+				<div class="rooms" id="waiting-room">
+					<div data-for-host="true">
+						<div data-waiting-text>
+							Waiting for players to join...
+						</div>
+						<button type="button" id="start-game-btn">
+							Start Game
+						</button>
+					</div>
+					<div data-for-players="true">
+						<div>
+							Waiting for host to start the game...
+						</div>
+					</div>
+				</div>
+				<div class="rooms" id="playing-room">
+					<canvas id="drawing-canvas"></canvas>
+					<div id="picking-a-word-modal">
+						<div data-for-user-to-draw="true">
+							<div>
+								<div class="title-md">Choose a word to draw</div>
+								<ul id="word-list"></ul>
+							</div>
+						</div>
+						<div data-for-user-to-draw="false">
+							<div>
+								<span id="user-to-draw-username">
+								</span>
+								is picking a word...
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div id="room-link" hidden>
+				<div>
+					Share this link with your friends to invite them to this room:
+					<input type="text" id="room-link-input" readonly />
+					<button type="button" data-copy-btn="room-link-input">
+						Copy
+					</button>
+				</div>
+			</div>
+		</div>
         <script src="/dist/index.js" type="module"></script>
     </body>
 </html>

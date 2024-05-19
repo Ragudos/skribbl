@@ -1,3 +1,6 @@
+import { WebSocketListener } from "./listener";
+import type { Canvas } from "./canvas";
+
 export type PlayingState =
     | {
           drawing: {
@@ -14,7 +17,7 @@ export type RoomState =
     | "waiting"
     | {
           playing: {
-              payingState: PlayingState;
+              playingState: PlayingState;
               currentUserId: string;
               currentRound: number;
           };
@@ -51,6 +54,11 @@ export type Socket =
     | {
           connectionState: "connected";
           ws: WebSocket;
+          listeners: {
+              onmessage: WebSocketListener<"message">;
+              onclose: WebSocketListener<"close">;
+              onerror: WebSocketListener<"error">;
+          };
       };
 
 export type GameState = {
@@ -59,7 +67,19 @@ export type GameState = {
     room: Room | null;
     usersInRoom: User[];
     binaryProtocolVersion: number | null;
+    canvas: Canvas | null;
 };
+
+export enum ClientToServerEvents {
+    StartGame = 0,
+    PickAWord = 1,
+    PointerDown = 2,
+    PointerMove = 3,
+    PointerUp = 4,
+    PointerLeave = 5,
+    ChangeColor = 6,
+    Message = 7,
+}
 
 export enum ServerToClientEvents {
     Error = 0,
@@ -72,14 +92,13 @@ export enum ServerToClientEvents {
     ResetRoom = 7,
     NewTurn = 8,
     NewWord = 9,
-    NewHost = 10,
-    NewRound = 11,
+    NewRound = 10,
+    NewHost = 11,
     PointerDown = 12,
     PointerMove = 13,
     PointerUp = 14,
-    ChangeColor = 15,
-    SendUserInfo = 16,
-    SendRoomInfo = 17,
-    SendUsersInRoomInfo = 18,
-    SendMessage = 19,
+    PointerLeave = 15,
+    ChangeColor = 16,
+    SendGameState = 17,
+    SendMessage = 18,
 }

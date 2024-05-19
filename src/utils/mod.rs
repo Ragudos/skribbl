@@ -4,6 +4,18 @@ use crate::state;
 
 pub mod consts;
 
+#[macro_export]
+macro_rules! vec_with_slices {
+    ($($x:expr),*; $($slice:expr),*) => {{
+        let mut v = vec![$($x),*];
+        $(
+            v.extend_from_slice($slice);
+        )*
+
+        v
+    }};
+}
+
 pub fn gen_random_id() -> String {
     random_string::generate(6, random_string::charsets::ALPHANUMERIC)
 }

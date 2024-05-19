@@ -66,20 +66,23 @@ pub async fn ws_endpoint<'st>(
                                     users.push(user.clone());
                                     available_room.amount_of_users += 1;
 
-                                    sink.send(ws::Message::Binary(events::ServerToClientEvents::SendRoomInfo { room: available_room.clone() }.try_into().unwrap())).await?;
-                                    sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUserInfo { user: user.clone() }.try_into().unwrap())).await?;
-                                    sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUsersInRoomInfo {
-                                        users: users
-                                            .iter()
-                                            .filter(|user| {
-                                                user.room_id == available_room.id
-                                            })
-                                            .cloned()
-                                            .collect::<Vec<state::User>>()
-                                        }
-                                        .try_into()
-                                        .unwrap()
-                                    )).await?;
+                                    sink.send(
+                                        ws::Message::Binary(
+                                            events::ServerToClientEvents::SendGameState {
+                                                room: available_room.clone(),
+                                                user: user.clone(),
+                                                users_in_room: users
+                                                    .iter()
+                                                    .filter(|user| {
+                                                        user.room_id == available_room.id
+                                                    })
+                                                    .cloned()
+                                                    .collect::<Vec<state::User>>()
+                                            }
+                                            .try_into()
+                                            .unwrap()
+                                        )
+                                    ).await?;
 
                                     let _ = events::WebSocketMessageBuilder::default()
                                         .r#type(events::WebSocketMessageType::Broadcast { sender_id: new_user_id.clone() })
@@ -108,16 +111,17 @@ pub async fn ws_endpoint<'st>(
                                     rooms.push(room.clone());
                                     users.push(user.clone());
 
-                                    sink.send(ws::Message::Binary(events::ServerToClientEvents::SendRoomInfo { room: room.clone() }.try_into().unwrap())).await?;
-                                    sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUserInfo { user: user.clone() }.try_into().unwrap())).await?;
-                                    sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUsersInRoomInfo { users: vec![user.clone()] }.try_into().unwrap())).await?;
-
-                                    let _ = events::WebSocketMessageBuilder::default()
-                                        .r#type(events::WebSocketMessageType::Broadcast { sender_id: new_user_id.clone() })
-                                        .room_id(new_room_id.clone())
-                                        .message(ws::Message::Binary(events::ServerToClientEvents::UserJoined { user }.try_into().unwrap()))
-                                        .build()
-                                        .unwrap().send(&server_messages);
+                                    sink.send(
+                                        ws::Message::Binary(
+                                            events::ServerToClientEvents::SendGameState {
+                                                room,
+                                                user: user.clone(),
+                                                users_in_room: vec![user]
+                                            }
+                                            .try_into()
+                                            .unwrap()
+                                        )
+                                    ).await?;
 
                                     room_id = new_room_id;
                                     user_id = new_user_id;
@@ -177,20 +181,23 @@ pub async fn ws_endpoint<'st>(
                                 users.push(user.clone());
                                 room.amount_of_users += 1;
 
-                                sink.send(ws::Message::Binary(events::ServerToClientEvents::SendRoomInfo { room: room.clone() }.try_into().unwrap())).await?;
-                                sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUserInfo { user: user.clone() }.try_into().unwrap())).await?;
-                                sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUsersInRoomInfo {
-                                    users: users
-                                        .iter()
-                                        .filter(|user| {
-                                            user.room_id == room.id
-                                        })
-                                        .cloned()
-                                        .collect::<Vec<state::User>>()
-                                    }
-                                    .try_into()
-                                    .unwrap()
-                                )).await?;
+                                sink.send(
+                                    ws::Message::Binary(
+                                        events::ServerToClientEvents::SendGameState {
+                                            room: room.clone(),
+                                            user: user.clone(),
+                                            users_in_room: users
+                                                .iter()
+                                                .filter(|user| {
+                                                    user.room_id == room.id
+                                                })
+                                                .cloned()
+                                                .collect::<Vec<state::User>>()
+                                        }
+                                        .try_into()
+                                        .unwrap()
+                                    )
+                                ).await?;
 
                                 let _ = events::WebSocketMessageBuilder::default()
                                     .r#type(events::WebSocketMessageType::Broadcast { sender_id: new_user_id.clone() })
@@ -224,9 +231,17 @@ pub async fn ws_endpoint<'st>(
                             rooms.push(room.clone());
                             users.push(user.clone());
 
-                            sink.send(ws::Message::Binary(events::ServerToClientEvents::SendRoomInfo { room }.try_into().unwrap())).await?;
-                            sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUserInfo { user: user.clone() }.try_into().unwrap())).await?;
-                            sink.send(ws::Message::Binary(events::ServerToClientEvents::SendUsersInRoomInfo { users: vec![user] }.try_into().unwrap())).await?;
+                            sink.send(
+                                ws::Message::Binary(
+                                    events::ServerToClientEvents::SendGameState {
+                                        room,
+                                        user: user.clone(),
+                                        users_in_room: vec![user]
+                                    }
+                                    .try_into()
+                                    .unwrap()
+                                )
+                            ).await?;
 
                             room_id = new_room_id;
                             user_id = new_user_id;
@@ -235,8 +250,20 @@ pub async fn ws_endpoint<'st>(
 
                     // We wrap in Arc so many can use this sink.
                     let sink = std::sync::Arc::new(rocket::futures::lock::Mutex::new(sink));
-                    let reader = reader::create_websocket_reader(room_id.clone(), user_id.clone(), game_state, stream, server_messages);
-                    let writer = writer::create_websocket_writer(room_id.clone(), user_id.clone(), game_state, sink.clone(), server_messages);
+                    let reader = reader::create_websocket_reader(
+                        room_id.clone(),
+                        user_id.clone(),
+                        game_state,
+                        stream,
+                        server_messages
+                    );
+                    let writer = writer::create_websocket_writer(
+                        room_id.clone(),
+                        user_id.clone(),
+                        game_state,
+                        sink.clone(),
+                        server_messages
+                    );
 
                     tokio::select! {
                         _ = reader => {}

@@ -79,3 +79,95 @@ input {
 button:disabled {
     cursor: default;
 }
+
+.title {
+    font-size: 1.175rem;
+    font-weight: 600;
+}
+
+.main-container:not(:has([data-player-count="1"])) [data-waiting-text] {
+    display: none;
+}
+
+.main-container:has([data-player-count="1"])
+    [data-for-host="true"]
+    [data-waiting-text] {
+    display: block;
+}
+
+[data-host="true"]
+    .main-container:not(:has([data-player-count]))
+    [data-for-host="true"]
+    #start-game-btn,
+[data-host="true"]
+    .main-container:has([data-player-count="1"])
+    [data-for-host="true"]
+    #start-game-btn {
+    display: none;
+}
+
+:not([data-host="true"]) [data-for-host="true"] {
+    display: none;
+}
+
+[data-host="true"] [data-for-players="true"] {
+    display: none;
+}
+
+[data-host="true"] [data-for-host="true"] {
+    display: block;
+}
+
+:not([data-user-to-draw="true"]) [data-for-user-to-draw="true"] {
+    display: none;
+}
+
+[data-user-to-draw="true"] [data-for-user-to-draw="true"] {
+    display: block;
+}
+
+[data-user-to-draw="true"] [data-for-user-to-draw="false"] {
+    display: none;
+}
+
+#playing-room {
+    overflow: hidden;
+
+    aspect-ratio: 16 / 9;
+
+    width: min(100%, 800px);
+
+    position: relative;
+}
+
+#drawing-canvas {
+    width: 100%;
+    height: 100%;
+
+    touch-action: pinch-zoom;
+}
+
+#picking-a-word-modal {
+    position: absolute;
+    z-index: 99;
+
+    transform: translateY(var(--_y, -100%));
+
+    width: 100%;
+    height: 100%;
+
+    inset: 0;
+
+    background-color: rgba(0, 0, 0, 0.5);
+
+    transition:
+        transform 0.3s,
+        visibility 0.3s,
+        opacity 0.3s;
+}
+
+#picking-a-word-modal[data-visible="true"] {
+    --_y: 0;
+    visibility: visible;
+    opacity: 1;
+}
