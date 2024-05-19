@@ -1,4 +1,4 @@
-import { PlayingState, Room, User } from "./types";
+import { Room, PlayingState, User } from "./types";
 
 type DataTypes = {
     string: string;
@@ -122,26 +122,62 @@ function parseObjAsPlayingStateObj(obj: unknown): obj is PlayingState {
         return false;
     }
 
-    if ("drawing" in obj) {
-        if (typeof obj.drawing !== "object" || !obj.drawing) {
+    if (
+        !("playing" in obj) ||
+        typeof obj.playing !== "object" ||
+        !obj.playing
+    ) {
+        return false;
+    }
+
+    if (
+        !("playingState" in obj.playing) ||
+        typeof obj.playing.playingState !== "object" ||
+        !obj.playing.playingState
+    ) {
+        return false;
+    }
+
+    if (
+        !("currentUserId" in obj.playing) ||
+        typeof obj.playing.currentUserId !== "string"
+    ) {
+        return false;
+    }
+
+    if (
+        !("currentRound" in obj.playing) ||
+        typeof obj.playing.currentRound !== "number"
+    ) {
+        return false;
+    }
+
+    if ("drawing" in obj.playing.playingState) {
+        if (
+            typeof obj.playing.playingState.drawing !== "object" ||
+            !obj.playing.playingState.drawing
+        ) {
             return false;
         }
 
         return (
-            "currentWord" in obj.drawing &&
-            typeof obj.drawing.currentWord === "string"
+            "currentWord" in obj.playing.playingState.drawing &&
+            typeof obj.playing.playingState.drawing.currentWord === "string"
         );
     }
 
-    if ("pickingAWord" in obj) {
-        if (typeof obj.pickingAWord !== "object" || !obj.pickingAWord) {
+    if ("pickingAWord" in obj.playing.playingState) {
+        if (
+            typeof obj.playing.playingState.pickingAWord !== "object" ||
+            !obj.playing.playingState.pickingAWord
+        ) {
             return false;
         }
 
         return (
-            "wordsToPick" in obj.pickingAWord &&
-            Array.isArray(obj.pickingAWord.wordsToPick) &&
-            obj.pickingAWord.wordsToPick.length === 3
+            "wordsToPick" in obj.playing.playingState.pickingAWord &&
+            Array.isArray(obj.playing.playingState.pickingAWord.wordsToPick) &&
+            obj.playing.playingState.pickingAWord.wordsToPick.length === 3
         );
     }
 

@@ -1,9 +1,11 @@
 import { wsHost, wsProtocol } from "./consts";
+import { initializeWaitingRoom } from "./dom";
 import { toast } from "./lib/toast";
 import { HTMLElementListener, WebSocketListener } from "./listener";
 import { connect, wsOnClose, wsOnError, wsOnMessage } from "./socket";
 import { STATE } from "./state";
 import { processError } from "./utils";
+import { startGameBtnListener } from "./waiting-room";
 
 export const playFormListener = new HTMLElementListener(
     "lobby-form",
@@ -86,6 +88,8 @@ async function connectToSocket(mode: "play" | "create") {
         playFormListener.disconnect();
         playBtnListener.disconnect();
         createPrivateRoomBtnListener.disconnect();
+		startGameBtnListener.listen();
+		initializeWaitingRoom();
     } catch (_) {
         STATE.binaryProtocolVersion = null;
 

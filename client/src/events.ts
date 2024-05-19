@@ -4,6 +4,7 @@ import {
     initializeWaitingRoom,
     removeUserFromListOfPlayersElement,
     setClientAsHostIfTrue,
+    showRoom,
 } from "./dom";
 import { toast } from "./lib/toast";
 import { STATE } from "./state";
@@ -12,6 +13,7 @@ import {
     parseObjAsUserObj,
     parsePartOfBinaryData,
 } from "./utils";
+import { startGameBtnListener } from "./waiting-room";
 
 export function handleError(data: Array<number>) {
     if (STATE.socket.connectionState !== "connected") {
@@ -48,7 +50,7 @@ export function handleUserJoined(data: Array<number>) {
         "data-player-count",
         STATE.usersInRoom.length.toString(),
     );
-	toast(`${user.displayName} has joined the room.`);
+    toast(`${user.displayName} has joined the room.`);
 }
 
 export function handleUserLeft(data: Array<number>) {
@@ -60,7 +62,7 @@ export function handleUserLeft(data: Array<number>) {
     const userIdx = STATE.usersInRoom.findIndex((user) => {
         return user.id === userId;
     });
-	const user = STATE.usersInRoom[userIdx];
+    const user = STATE.usersInRoom[userIdx];
 
     if (userIdx === -1) {
         console.error(
@@ -76,13 +78,60 @@ export function handleUserLeft(data: Array<number>) {
         "data-player-count",
         STATE.usersInRoom.length.toString(),
     );
-	toast(`${user.displayName} has left the room.`);
+    toast(`${user.displayName} has left the room.`);
 }
 
-export function handleStartGame(data: Array<number>) {}
+export function handleStartGame(_data: Array<number>) {
+    if (STATE.socket.connectionState !== "connected") {
+        return;
+    }
+
+    if (!STATE.room) {
+        throw new Error(
+            "Received event `startGame` despite room state being empty.",
+        );
+    }
+
+    // Default state
+    STATE.room.state = {
+        playing: {
+            playingState: {
+                pickingAWord: {
+                    wordsToPick: ["", "", ""],
+                },
+            },
+            currentUserId: "",
+            currentRound: 0,
+        },
+    };
+
+	startGameBtnListener.disconnect();
+    showRoom("playing-room");
+}
+
 export function handlePickAWord(data: Array<number>) {}
 export function handleEndGame(data: Array<number>) {}
-export function handleResetRoom(data: Array<number>) {}
+
+export function handleResetRoom(_data: Array<number>) {
+	if (STATE.socket.connectionState !== "connected") {
+        return;
+    }
+
+    if (!STATE.room) {
+        throw new Error(
+            "Received event `resetRoom` despite room state being empty.",
+        );
+    }
+
+	STATE.room.state = "waiting";
+
+	STATE.canvas?.destroy();
+	STATE.canvas = null;
+
+	showRoom("waiting-room");
+	startGameBtnListener.listen();
+}
+
 export function handleNewTurn(data: Array<number>) {}
 export function handleNewWord(data: Array<number>) {}
 export function handleNewRound(data: Array<number>) {}
@@ -140,8 +189,6 @@ export function handleSendGameState(data: Array<number>) {
     STATE.room = room;
     STATE.user = user;
     STATE.usersInRoom = usersInRoom;
-
-    initializeWaitingRoom();
 }
 
 export function handleSendMessage(data: Array<number>) {}

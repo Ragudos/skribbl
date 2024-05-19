@@ -111,7 +111,7 @@ export function addUserToListOfPlayersElement(user: User): void {
 
     li.appendChild(displayNameEl);
 
-	if (user.id === STATE.room!.hostId) {
+    if (user.id === STATE.room!.hostId) {
         const hostBadge = document.createElement("span");
 
         hostBadge.setAttribute("data-host-badge", "");
@@ -119,7 +119,7 @@ export function addUserToListOfPlayersElement(user: User): void {
         hostBadge.textContent = "(host)";
 
         li.appendChild(hostBadge);
-	}
+    }
 
     getListOfPlayersElement().appendChild(li);
 }

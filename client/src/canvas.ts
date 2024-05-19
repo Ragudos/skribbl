@@ -9,6 +9,25 @@ export type Point = {
     y: number;
 };
 
+export const canvasPointerDownListener = new HTMLElementListener(
+    "drawing-canvas",
+    "pointerdown",
+    onCanvasPointerDown,
+);
+export const canvasPointerLeaveListener = new HTMLElementListener(
+    "drawing-canvas",
+    "pointerleave",
+    onCanvasPointerLeave,
+);
+export const windowPointerMoveListenerForCanvas = new WindowListener(
+    "pointermove",
+    onWindowPointerMove,
+);
+export const windowPointerUpListenerForCanvas = new WindowListener(
+    "pointerup",
+    onWindowPointerUp,
+);
+
 export class Canvas {
     static DEFAULT_LINE_WIDTH = 10;
     static DEFAULT_LINE_COLOR = "black";
@@ -44,6 +63,11 @@ export class Canvas {
             this._ctx.canvas.width,
             this._ctx.canvas.height,
         );
+
+		canvasPointerDownListener.disconnect();
+		windowPointerUpListenerForCanvas.disconnect();
+		windowPointerMoveListenerForCanvas.disconnect();
+		canvasPointerLeaveListener.disconnect();
     }
 
     drawLine(x: number, y: number) {
@@ -133,25 +157,6 @@ export class Canvas {
         this._ctx.fillStyle = color;
     }
 }
-
-export const canvasPointerDownListener = new HTMLElementListener(
-    "drawing-canvas",
-    "pointerdown",
-    onCanvasPointerDown,
-);
-export const canvasPointerLeaveListener = new HTMLElementListener(
-    "drawing-canvas",
-    "pointerleave",
-    onCanvasPointerLeave,
-);
-export const windowPointerMoveListenerForCanvas = new WindowListener(
-    "pointermove",
-    onWindowPointerMove,
-);
-export const windowPointerUpListenerForCanvas = new WindowListener(
-    "pointerup",
-    onWindowPointerUp,
-);
 
 function onCanvasPointerDown() {
     if (
