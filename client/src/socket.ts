@@ -9,8 +9,11 @@ import {
     getListOfPlayersElement,
     getRoomLinkElement,
     getRoomLinkInputElement,
+    getUserToDrawUsername,
+    getWordList,
     resetBodyAttributes,
     showRoom,
+    togglePickingAWordModal,
 } from "./dom";
 import {
     handleChangeColor,
@@ -226,6 +229,20 @@ export function wsOnClose() {
     STATE.canvas = null;
 
     STATE.binaryProtocolVersion = null;
+
+	if (STATE.wordListBtnListeners) {
+		for (let i = 0; i < STATE.wordListBtnListeners.length; ++i) {
+			STATE.wordListBtnListeners[i].disconnect();
+		}
+
+		STATE.wordListBtnListeners = null;
+
+		getWordList().innerHTML = "";
+	}
+
+
+	getUserToDrawUsername().textContent = "";
+	togglePickingAWordModal(false);
 
     getRoomLinkElement().setAttribute("hidden", "");
     getListOfPlayersElement().setAttribute("hidden", "");

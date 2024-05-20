@@ -1,5 +1,3 @@
-use rocket::response::stream::Event;
-
 use crate::{state, utils, vec_with_slices};
 
 #[derive(Clone)]
@@ -41,8 +39,7 @@ pub enum ClientToServerEvents {
     PointerLeave,
     ChangeColor { color: String },
     Message { message: String },
-    // TODO: Add message event and a handler for that
-    // (guessing the word)
+    FinishedDrawing
 }
 
 impl TryFrom<&Vec<u8>> for ClientToServerEvents {
@@ -170,6 +167,7 @@ impl TryFrom<&Vec<u8>> for ClientToServerEvents {
 
                 Ok(Self::Message { message })
             }
+            8 => Ok(Self::FinishedDrawing),
             _ => Err("Invalid event type".into()),
         }
     }
@@ -225,6 +223,11 @@ pub enum ServerToClientEvents {
     Message {
         message: String,
     },
+    AddScore {
+        user_id: String,
+        score: u16,
+    },
+    FinishedDrawing
 }
 
 impl TryFrom<ServerToClientEvents> for Vec<u8> {
@@ -464,6 +467,36 @@ impl TryFrom<ServerToClientEvents> for Vec<u8> {
                     message_as_bytes
                 ))
             }
+            ServerToClientEvents::AddScore { user_id, score } => {
+                let user_id_as_bytes = user_id.as_bytes();
+                let length_of_user_id = utils::turn_usize_to_vec_of_u8(user_id_as_bytes.len());
+                let length_of_user_id_length_indicator = length_of_user_id.len();
+
+                let score_as_bytes = score.to_be_bytes();
+                let score_length = utils::turn_usize_to_vec_of_u8(score_as_bytes.len());
+                let length_of_score_length_indicator = score_length.len();
+
+                Ok(vec_with_slices!(
+                    utils::consts::BINARY_PROTOCOL_VERSION,
+                    event_as_borrowed.into();
+                    vec_with_slices!(
+                        length_of_user_id_length_indicator.try_into()?;
+                        &length_of_user_id,
+                        user_id_as_bytes
+                    ).as_slice(),
+                    vec_with_slices!(
+                        length_of_score_length_indicator.try_into()?;
+                        &score_length,
+                        &score_as_bytes
+                    ).as_slice()
+                ))
+            }
+            ServerToClientEvents::FinishedDrawing => {
+                Ok(vec![
+                    utils::consts::BINARY_PROTOCOL_VERSION,
+                    event_as_borrowed.into()
+                ])
+            }
         }
     }
 }
@@ -491,6 +524,8 @@ impl From<&ServerToClientEvents> for u8 {
             ServerToClientEvents::ChangeColor { .. } => 16,
             ServerToClientEvents::SendGameState { .. } => 17,
             ServerToClientEvents::Message { .. } => 18,
+            ServerToClientEvents::AddScore { .. } => 19,
+            ServerToClientEvents::FinishedDrawing => 20
         }
     }
 }

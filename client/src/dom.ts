@@ -1,6 +1,6 @@
-import { toast } from "./lib/toast";
 import { STATE } from "./state";
-import { User } from "./types";
+import { ClientToServerEvents, User } from "./types";
+import { turnNumberToArrayOfU8Int } from "./utils";
 
 export function showRoom(roomId: "lobby" | "waiting-room" | "playing-room") {
     const activeRoom = document.querySelector(
@@ -25,6 +25,83 @@ export function initializeWaitingRoom() {
     getRoomLinkElement().removeAttribute("hidden");
     getListOfPlayersElement().removeAttribute("hidden");
     showRoom("waiting-room");
+}
+
+export function setUserToDraw() {
+    if (!STATE.user) {
+        console.error("Calling `setUserToDraw` despite user not existing.");
+        return;
+    }
+
+    if (
+        !STATE.room ||
+        STATE.room.state === "waiting" ||
+        STATE.room.state === "finished"
+    ) {
+        console.error(
+            "Calling `setUserToDraw` despite room not existing or not in playing state.",
+        );
+        return;
+    }
+
+    if (STATE.room.state.playing.currentUserId === STATE.user.id) {
+        document.body.setAttribute("data-user-to-draw", "true");
+    } else {
+        if (document.body.hasAttribute("data-user-to-draw")) {
+            document.body.removeAttribute("data-user-to-draw");
+        }
+
+        getUserToDrawUsername().textContent =
+            STATE.usersInRoom.find((user) => {
+                if (
+                    !STATE.room ||
+                    STATE.room.state === "waiting" ||
+                    STATE.room.state === "finished"
+                ) {
+                    return false;
+                }
+
+                return STATE.room.state.playing.currentUserId === user.id;
+            })?.displayName ?? "";
+		togglePickingAWordModal(true);
+    }
+}
+
+export function onWordListBtnClick(e: Event) {
+	if (STATE.socket.connectionState !== "connected") {
+		throw new Error("Received event `click` from a button in `word-list` despite socket not being in `connected` connectionState");
+	}
+
+	if (STATE.binaryProtocolVersion === null) {
+		return;
+	}
+
+	if (!STATE.wordListBtnListeners) {
+		throw new Error("Received event `click` from a button in `word-list` despite its listener not in state");
+	}
+
+	const value = (e.currentTarget as HTMLButtonElement).value;
+
+	for (let i = 0; i < STATE.wordListBtnListeners.length; ++i) {
+		STATE.wordListBtnListeners[i].disconnect();
+	}
+
+	STATE.wordListBtnListeners = null;
+
+	const wordBinary = new TextEncoder().encode(value);
+	const lengthInU8 = turnNumberToArrayOfU8Int(wordBinary.length);
+
+	STATE.socket.ws.send(
+		new Uint8Array(
+			[
+				STATE.binaryProtocolVersion,
+				ClientToServerEvents.PickAWord,
+				lengthInU8.length,
+				...lengthInU8,
+				...wordBinary
+			]
+		)
+	);
 }
 
 export function populateListOfPlayers() {
@@ -128,6 +205,14 @@ export function removeUserFromListOfPlayersElement(userId: string): void {
     document.getElementById(`user-${userId}`)?.remove();
 }
 
+export function togglePickingAWordModal(show: boolean) {
+	if (show) {
+		getPickingAWordModal().setAttribute("data-visible", "true");
+	} else {
+		getPickingAWordModal().removeAttribute("data-visible");
+	}
+}
+
 export function getListOfPlayersElement(): HTMLUListElement {
     const listOfPlayersEl = document.getElementById("list-of-players");
 
@@ -163,3 +248,40 @@ export function getRoomLinkInputElement(): HTMLInputElement {
 
     return roomLinkInput;
 }
+
+export function getWordList(): HTMLUListElement {
+    const wordList = document.getElementById("word-list");
+
+    if (!wordList || !(wordList instanceof HTMLUListElement)) {
+        throw new Error(
+            "Element with id `word-list` cannot be found or it's not an instance of HTMLUListElement",
+        );
+    }
+
+    return wordList;
+}
+
+export function getUserToDrawUsername(): HTMLElement {
+    const userToDrawUsername = document.getElementById("user-to-draw-username");
+
+    if (!userToDrawUsername || !(userToDrawUsername instanceof HTMLElement)) {
+        throw new Error(
+            "Element with id `user-to-draw-username` cannot be found or it's not an instance of a HTMLElement",
+        );
+    }
+
+    return userToDrawUsername;
+}
+
+export function getPickingAWordModal(): HTMLElement {
+	const pickingAWordModal = document.getElementById("picking-a-word-modal");
+
+	if (!pickingAWordModal || !(pickingAWordModal instanceof HTMLElement)) {
+		throw new Error(
+			"Element with id `picking-a-word-modal` cannot be found or it's not an instance of a HTMLElement"
+		);
+	}
+
+	return pickingAWordModal;
+}
+

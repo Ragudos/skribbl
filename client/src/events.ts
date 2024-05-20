@@ -1,12 +1,18 @@
+import { Point } from "./canvas";
 import {
     addUserToListOfPlayersElement,
     getListOfPlayersElement,
+    getWordList,
     initializeWaitingRoom,
+    onWordListBtnClick,
     removeUserFromListOfPlayersElement,
     setClientAsHostIfTrue,
+    setUserToDraw,
     showRoom,
+    togglePickingAWordModal,
 } from "./dom";
 import { toast } from "./lib/toast";
+import { HTMLElementListener } from "./listener";
 import { STATE } from "./state";
 import {
     parseObjAsRoomObj,
@@ -105,15 +111,89 @@ export function handleStartGame(_data: Array<number>) {
         },
     };
 
-	startGameBtnListener.disconnect();
+    startGameBtnListener.disconnect();
     showRoom("playing-room");
 }
 
-export function handlePickAWord(data: Array<number>) {}
+export function handlePickAWord(data: Array<number>) {
+	if (STATE.socket.connectionState !== "connected") {
+        return;
+    }
+
+    if (!STATE.room || !STATE.user || STATE.usersInRoom.length === 0) {
+        throw new Error("Received event `newTurn` despite state being empty.");
+    }
+
+    if (STATE.room.state === "waiting" || STATE.room.state === "finished") {
+        console.error(
+            "Received event `pickAWord` despite room not in playing state.",
+        );
+
+        return;
+    }
+
+	if (STATE.room.state.playing.currentUserId !== STATE.user.id) {
+		console.error(
+			"Received event `pickAWord` despite client not being the one to draw."
+		);
+
+		return;
+	}
+
+	const stringifiedWords = parsePartOfBinaryData(data, "string");
+	const words = JSON.parse(stringifiedWords);
+
+	if (!parseAsTupleOfThreeStrings(words)) {
+		throw new Error("Received invalid payload");
+	}
+
+	STATE.room.state.playing.playingState = {
+		pickingAWord: {
+			wordsToPick: words
+		}
+	};
+
+	getWordList().innerHTML = "";
+
+	const buttonListeners: HTMLElementListener<"click">[] = [];
+
+	for (let i = 0; i < words.length; ++i) {
+		const li = document.createElement("li");
+
+		const buttonId = `word-${words[i]}`;
+		const button = document.createElement("button");
+
+		button.value = words[i];
+		button.id = buttonId;
+		button.textContent = words[i];
+
+		li.appendChild(button);
+		getWordList().appendChild(li);
+
+		const listener = new HTMLElementListener(buttonId, "click", onWordListBtnClick);
+
+		listener.listen();
+		buttonListeners.push(listener);
+	}
+
+	STATE.wordListBtnListeners = buttonListeners as typeof STATE.wordListBtnListeners;
+	togglePickingAWordModal(true);
+}
+
+function parseAsTupleOfThreeStrings(strings: unknown): strings is [string, string, string] {
+	if (!Array.isArray(strings) || strings.length !== 3) {
+		return false;
+	}
+
+	return !strings.some((string) => {
+		return typeof string !== "string"
+	});
+}
+
 export function handleEndGame(data: Array<number>) {}
 
 export function handleResetRoom(_data: Array<number>) {
-	if (STATE.socket.connectionState !== "connected") {
+    if (STATE.socket.connectionState !== "connected") {
         return;
     }
 
@@ -123,17 +203,56 @@ export function handleResetRoom(_data: Array<number>) {
         );
     }
 
-	STATE.room.state = "waiting";
+    STATE.room.state = "waiting";
 
-	STATE.canvas?.destroy();
-	STATE.canvas = null;
+    STATE.canvas?.destroy();
+    STATE.canvas = null;
+	
+	if (STATE.wordListBtnListeners) {
+		for (let i = 0; i < STATE.wordListBtnListeners.length; ++i) {
+			STATE.wordListBtnListeners[i].disconnect();
+		}
 
-	showRoom("waiting-room");
-	startGameBtnListener.listen();
+		STATE.wordListBtnListeners = null;
+
+		getWordList().innerHTML = "";
+		togglePickingAWordModal(false);
+	}
+
+    showRoom("waiting-room");
+    // If we reset the room, the host will be the only player left anyway
+    startGameBtnListener.listen();
 }
 
-export function handleNewTurn(data: Array<number>) {}
-export function handleNewWord(data: Array<number>) {}
+export function handleNewTurn(data: Array<number>) {
+    if (STATE.socket.connectionState !== "connected") {
+        return;
+    }
+
+    if (!STATE.room || !STATE.user || STATE.usersInRoom.length === 0) {
+        throw new Error("Received event `newTurn` despite state being empty.");
+    }
+
+    if (STATE.room.state === "waiting" || STATE.room.state === "finished") {
+        console.error(
+            "Received event `newTurn` despite room not in playing state.",
+        );
+        return;
+    }
+
+    const userId = parsePartOfBinaryData(data, "string");
+
+    STATE.room.state.playing.currentUserId = userId;
+
+    setUserToDraw();
+}
+
+export function handleNewWord(data: Array<number>) {
+	const word = parsePartOfBinaryData(data, "string");
+
+	console.log(word);
+}
+
 export function handleNewRound(data: Array<number>) {}
 
 export function handleNewHost(data: Array<number>) {

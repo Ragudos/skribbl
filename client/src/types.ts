@@ -1,4 +1,4 @@
-import { WebSocketListener } from "./listener";
+import { HTMLElementListener, WebSocketListener } from "./listener";
 import type { Canvas } from "./canvas";
 
 export type PlayingState =
@@ -68,6 +68,7 @@ export type GameState = {
     usersInRoom: User[];
     binaryProtocolVersion: number | null;
     canvas: Canvas | null;
+	wordListBtnListeners: null | [HTMLElementListener<"click">, HTMLElementListener<"click">, HTMLElementListener<"click">]
 };
 
 export enum ClientToServerEvents {

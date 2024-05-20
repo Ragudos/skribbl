@@ -7,4 +7,5 @@ export const toast = initializeToast({
         x: "right",
         y: "bottom",
     },
+	toastDuration: 2500
 });

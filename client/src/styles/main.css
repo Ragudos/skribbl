@@ -34,6 +34,22 @@ body {
     -moz-osx-font-smoothing: grayscale;
 }
 
+button,
+input,
+a,
+textarea,
+select {
+	font: inherit;
+}
+
+button,
+input,
+a,
+textarea,
+select {
+	font-size: 1.025rem;
+}
+
 button {
     padding: 0.5rem 0.75rem;
 
@@ -44,7 +60,7 @@ button {
 
     background-color: transparent;
 
-    font-weight: 600;
+	font-weight: 600;
 
     min-width: 10ch;
     min-height: 5ch;
@@ -158,12 +174,20 @@ button:disabled {
 
     inset: 0;
 
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: rgba(0, 0, 0, 0.25);
 
     transition:
         transform 0.3s,
         visibility 0.3s,
         opacity 0.3s;
+
+	opacity: 0;
+	visibility: hidden;
+
+	display: grid;
+	place-items: center;
+
+	text-align: center;
 }
 
 #picking-a-word-modal[data-visible="true"] {
@@ -171,3 +195,39 @@ button:disabled {
     visibility: visible;
     opacity: 1;
 }
+
+#word-list {
+	display: flex;
+	list-style-type: none;
+	gap: 0.5rem;
+
+	justify-content: center;
+	align-items: center;
+
+	margin-top: 1rem;
+}
+
+#word-list button {
+	background-color: white;
+
+	box-shadow: 0px 2px 2px hsl(0 0% 0% / 0.5), 0px 2px 2px hsl(0 0% 0% / 0.5), 0px 4px 4px hsl(0 0% 0% / 0.5);
+
+	transition: transform 0.3s ease-out, box-shadow 0.3s ease-out, opacity 0.3s ease-out;
+
+	will-change: transform, box-shadow, opacity;
+}
+
+#word-list button:hover {
+	box-shadow: 0px 1px 1px hsl(0 0% 0% / 0.5), 0px 2px 2px hsl(0 0% 0% / 0.5);
+	transform: scale(0.95);
+}
+
+#word-list button:active {
+	opacity: 0.87;
+}
+
+.title-md {
+	font-size: 1.375rem;
+	font-weight: 600;
+}
+

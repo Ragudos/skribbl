@@ -13,4 +13,6 @@ export const STATE: GameState = {
     binaryProtocolVersion: null,
 
     canvas: null,
+
+	wordListBtnListeners: null
 };

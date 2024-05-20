@@ -88,8 +88,8 @@ async function connectToSocket(mode: "play" | "create") {
         playFormListener.disconnect();
         playBtnListener.disconnect();
         createPrivateRoomBtnListener.disconnect();
-		startGameBtnListener.listen();
-		initializeWaitingRoom();
+        startGameBtnListener.listen();
+        initializeWaitingRoom();
     } catch (_) {
         STATE.binaryProtocolVersion = null;
 

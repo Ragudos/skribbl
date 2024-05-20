@@ -38,16 +38,6 @@ pub fn choose_user_in_a_room_randomly<'st>(
         .ok_or("No user found in the room")?)
 }
 
-/// Turn a usize into a vector of u8
-/// where each element is less than or equal to 255.
-///
-/// For example:
-///
-/// ```rust
-/// let value = 300;
-/// let bytes = turn_usize_to_vec_of_u8(value);
-/// assert_eq!(bytes, vec![255, 45]);
-/// ```
 pub fn turn_usize_to_vec_of_u8(value: usize) -> Vec<u8> {
     let mut bytes = vec![];
     let mut value = value;

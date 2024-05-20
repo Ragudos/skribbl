@@ -11,6 +11,21 @@ pub async fn init_rocket(
 ) -> rocket::Rocket<rocket::Build> {
     let game_state = state::GameState::default();
 
+    /* {
+        let cloned_game_state = game_state.clone();
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
+
+            loop {
+                interval.tick().await;
+
+                println!("Rooms: {:#?}", cloned_game_state.rooms.lock().await);
+                println!("Users: {:#?}", cloned_game_state.users.lock().await);
+            }
+        });
+    } */
+
     rocket
         .mount("/", rocket::routes![routes::index::index_page,])
         .mount(

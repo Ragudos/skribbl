@@ -8,6 +8,7 @@ use crate::utils;
     Eq,
     PartialOrd,
     Ord,
+    Debug
 )]
 pub enum Visibility {
     #[serde(rename = "public")]
@@ -16,16 +17,43 @@ pub enum Visibility {
     Private,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct WordToDraw(pub String);
 
 impl WordToDraw {
     pub fn get_three_words() -> [String; 3] {
+        let mut words: Vec<&str> = Vec::with_capacity(3);
+
+        while words.len() != 3 {
+            let word = utils::get_random_word();
+
+            if words.contains(&word) {
+                continue;
+            }
+
+            words.push(word);
+        }
+
         [
-            utils::get_random_word().to_string(),
-            utils::get_random_word().to_string(),
-            utils::get_random_word().to_string(),
+            words.get(0).unwrap().to_string(),
+            words.get(1).unwrap().to_string(),
+            words.get(2).unwrap().to_string()
         ]
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_words_to_draw_not_repeated() {
+        for _ in 0..(utils::consts::WORDS.len() / 3) {
+            let words = WordToDraw::get_three_words();
+            assert_ne!(words[0], words[1]);
+            assert_ne!(words[0], words[2]);
+            assert_ne!(words[1], words[2]);
+        }
     }
 }
 
@@ -37,6 +65,7 @@ impl WordToDraw {
     Eq,
     PartialOrd,
     Ord,
+    Debug
 )]
 pub enum PlayingState {
     #[serde(rename = "pickingAWord")]
@@ -73,6 +102,7 @@ impl Default for PlayingState {
     Eq,
     PartialOrd,
     Ord,
+    Debug
 )]
 pub enum RoomState {
     #[serde(rename = "waiting")]
@@ -91,7 +121,7 @@ pub enum RoomState {
 }
 
 #[derive(
-    rocket::serde::Serialize, rocket::serde::Deserialize, derive_builder::Builder, Clone,
+    rocket::serde::Serialize, rocket::serde::Deserialize, derive_builder::Builder, Clone, Debug
 )]
 pub struct Room {
     pub id: String,
@@ -112,7 +142,7 @@ pub struct Room {
     pub amount_of_users: u8,
 }
 
-#[derive(rocket::serde::Serialize, derive_builder::Builder, Clone)]
+#[derive(rocket::serde::Serialize, derive_builder::Builder, Clone, Debug)]
 pub struct User {
     pub id: String,
     #[serde(rename = "displayName")]
@@ -122,6 +152,9 @@ pub struct User {
     #[builder(default = "false")]
     #[serde(skip_serializing)]
     pub has_drawn: bool,
+    #[builder(default)]
+    #[serde(skip_serializing)]
+    pub score: u16,
 }
 
 #[derive(Clone, Default)]

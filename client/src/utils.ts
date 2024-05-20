@@ -64,6 +64,25 @@ export function parsePartOfBinaryData<K extends keyof DataTypes>(
     }
 }
 
+export function turnNumberToArrayOfU8Int(num: number): Array<number> {
+	let amountLeft = num;
+	const arr: number[] = [];
+
+	while (amountLeft !== 0) {
+		if (amountLeft < 255) {
+			const diff = amountLeft - amountLeft;
+
+			arr.push(amountLeft);
+			amountLeft = diff;
+		} else {
+			amountLeft -= 255;
+			arr.push(255);
+		}
+	}
+
+	return arr;
+}
+
 export function getApproximateCursorPositionInCanvas(
     clientPos: number,
     rectPos: number,

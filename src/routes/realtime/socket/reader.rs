@@ -1,7 +1,7 @@
 use rocket::futures::StreamExt;
 use rocket::tokio;
 
-use crate::{events, state, utils};
+use crate::{events::{self, ClientToServerEvents}, state, utils};
 
 enum WebSocketOperationResult {
     Continue,
@@ -37,16 +37,124 @@ pub async fn create_websocket_reader(
                         WebSocketOperationResult::Continue => continue,
                         WebSocketOperationResult::Break => break,
                     },
-                    _ => {}
-                }
+                    events::ClientToServerEvents::PickAWord { word } => {
+                        // TODO: Add check if we need to send this by checking if someone is
+                        // drawing.
 
-                // Put this outside so we don't have to clone the data
-                let _ = events::WebSocketMessageBuilder::default()
-                    .r#type(events::WebSocketMessageType::Everyone)
-                    .room_id(room_id.clone())
-                    .message(ws::Message::Binary(data))
-                    .build()?
-                    .send(server_messages);
+                        let _ = events::WebSocketMessageBuilder::default()
+                            .r#type(events::WebSocketMessageType::Everyone)
+                            .room_id(room_id.clone())
+                            .message(
+                                ws::Message::Binary(
+                                    events::ServerToClientEvents::NewWord { word }.try_into()?
+                                )
+                            )
+                            .build()?
+                            .send(server_messages);
+                    },
+                    events::ClientToServerEvents::PointerUp => {
+                        // TODO: Add check if we need to send this by checking if someone is
+                        // drawing.
+
+                        let _ = events::WebSocketMessageBuilder::default()
+                            .r#type(events::WebSocketMessageType::Everyone)
+                            .room_id(room_id.clone())
+                            .message(
+                                ws::Message::Binary(
+                                    events::ServerToClientEvents::PointerUp.try_into()?
+                                )
+                            )
+                            .build()?
+                            .send(server_messages);
+                    },
+                    events::ClientToServerEvents::PointerDown => {
+                        // TODO: Add check if we need to send this by checking if someone is
+                        // drawing.
+
+                        let _ = events::WebSocketMessageBuilder::default()
+                            .r#type(events::WebSocketMessageType::Everyone)
+                            .room_id(room_id.clone())
+                            .message(
+                                ws::Message::Binary(
+                                    events::ServerToClientEvents::PointerDown.try_into()?
+                                )
+                            )
+                            .build()?
+                            .send(server_messages);
+                    },
+                    events::ClientToServerEvents::PointerLeave => {
+                        // TODO: Add check if we need to send this by checking if someone is
+                        // drawing.
+
+                        let _ = events::WebSocketMessageBuilder::default()
+                            .r#type(events::WebSocketMessageType::Everyone)
+                            .room_id(room_id.clone())
+                            .message(
+                                ws::Message::Binary(
+                                    events::ServerToClientEvents::PointerLeave.try_into()?
+                                )
+                            )
+                            .build()?
+                            .send(server_messages);
+                    },
+                    events::ClientToServerEvents::PointerMove { x, y } => {
+                        // TODO: Add check if we need to send this by checking if someone is
+                        // drawing.
+ 
+                        let _ = events::WebSocketMessageBuilder::default()
+                            .r#type(events::WebSocketMessageType::Everyone)
+                            .room_id(room_id.clone())
+                            .message(
+                                ws::Message::Binary(
+                                    events::ServerToClientEvents::PointerMove { x, y }.try_into()?
+                                )
+                            )
+                            .build()?
+                            .send(server_messages);
+                    },
+                    events::ClientToServerEvents::ChangeColor { color } => {
+                        // TODO: Add check if we need to send this by checking if someone is
+                        // drawing.
+                        let _ = events::WebSocketMessageBuilder::default()
+                            .r#type(events::WebSocketMessageType::Everyone)
+                            .room_id(room_id.clone())
+                            .message(
+                                ws::Message::Binary(
+                                    events::ServerToClientEvents::ChangeColor { color }.try_into()?
+                                )
+                            )
+                            .build()?
+                            .send(server_messages);
+                    },
+                    ClientToServerEvents::FinishedDrawing => {
+                        // TODO: Add check if we need to send this by checking if someone is
+                        // drawing.
+                        let _ = events::WebSocketMessageBuilder::default()
+                            .r#type(events::WebSocketMessageType::Everyone)
+                            .room_id(room_id.clone())
+                            .message(
+                                ws::Message::Binary(
+                                    events::ServerToClientEvents::FinishedDrawing.try_into()?
+                                )
+                            )
+                            .build()?
+                            .send(server_messages);
+                    },
+                    events::ClientToServerEvents::Message { message } => {
+                        // TODO: Add check logic to see if a message is === to word being drawn if
+                        // someone is drawing.
+                        let _ = events::WebSocketMessageBuilder::default()
+                            .r#type(events::WebSocketMessageType::Everyone)
+                            .room_id(room_id.clone())
+                            .message(
+                                ws::Message::Binary(
+                                    events::ServerToClientEvents::Message { message }.try_into()?
+                                )
+                            )
+                            .build()?
+                            .send(server_messages);
+                    }
+                }
             }
             ws::Message::Close(close_frame) => {
                 if let Some(close_frame) = &close_frame {

@@ -64,10 +64,10 @@ export class Canvas {
             this._ctx.canvas.height,
         );
 
-		canvasPointerDownListener.disconnect();
-		windowPointerUpListenerForCanvas.disconnect();
-		windowPointerMoveListenerForCanvas.disconnect();
-		canvasPointerLeaveListener.disconnect();
+        canvasPointerDownListener.disconnect();
+        windowPointerUpListenerForCanvas.disconnect();
+        windowPointerMoveListenerForCanvas.disconnect();
+        canvasPointerLeaveListener.disconnect();
     }
 
     drawLine(x: number, y: number) {
