@@ -8,7 +8,7 @@ use crate::utils;
     Eq,
     PartialOrd,
     Ord,
-    Debug
+    Debug,
 )]
 pub enum Visibility {
     #[serde(rename = "public")]
@@ -37,7 +37,7 @@ impl WordToDraw {
         [
             words.get(0).unwrap().to_string(),
             words.get(1).unwrap().to_string(),
-            words.get(2).unwrap().to_string()
+            words.get(2).unwrap().to_string(),
         ]
     }
 }
@@ -65,23 +65,22 @@ mod test {
     Eq,
     PartialOrd,
     Ord,
-    Debug
+    Debug,
 )]
 pub enum PlayingState {
     #[serde(rename = "pickingAWord")]
     PickingAWord {
         #[serde(rename = "wordsToPick")]
         words_to_pick: [String; 3],
-        /// When the user started picking a word.
         #[serde(skip_serializing)]
-        started_at: rocket::time::OffsetDateTime,
+        time_left: u8,
     },
     #[serde(rename = "drawing")]
     Drawing {
         #[serde(rename = "currentWord")]
         current_word: String,
         #[serde(skip_serializing)]
-        started_at: rocket::time::OffsetDateTime,
+        time_left: u8,
     },
 }
 
@@ -89,7 +88,7 @@ impl Default for PlayingState {
     fn default() -> Self {
         Self::PickingAWord {
             words_to_pick: WordToDraw::get_three_words(),
-            started_at: rocket::time::OffsetDateTime::now_utc(),
+            time_left: utils::consts::PICK_WORD_TIME_LIMIT,
         }
     }
 }
@@ -102,7 +101,7 @@ impl Default for PlayingState {
     Eq,
     PartialOrd,
     Ord,
-    Debug
+    Debug,
 )]
 pub enum RoomState {
     #[serde(rename = "waiting")]
@@ -121,7 +120,11 @@ pub enum RoomState {
 }
 
 #[derive(
-    rocket::serde::Serialize, rocket::serde::Deserialize, derive_builder::Builder, Clone, Debug
+    rocket::serde::Serialize,
+    rocket::serde::Deserialize,
+    derive_builder::Builder,
+    Clone,
+    Debug,
 )]
 pub struct Room {
     pub id: String,
@@ -155,6 +158,17 @@ pub struct User {
     #[builder(default)]
     #[serde(skip_serializing)]
     pub score: u16,
+}
+
+#[derive(Clone)]
+pub enum TickerCommand {
+    Delete,
+}
+
+#[derive(Clone, derive_builder::Builder)]
+pub struct TickerMsg {
+    pub room_id: String,
+    pub command: TickerCommand,
 }
 
 #[derive(Clone, Default)]

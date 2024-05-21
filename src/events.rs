@@ -39,7 +39,7 @@ pub enum ClientToServerEvents {
     PointerLeave,
     ChangeColor { color: String },
     Message { message: String },
-    FinishedDrawing
+    FinishedDrawing,
 }
 
 impl TryFrom<&Vec<u8>> for ClientToServerEvents {
@@ -227,7 +227,10 @@ pub enum ServerToClientEvents {
         user_id: String,
         score: u16,
     },
-    FinishedDrawing
+    FinishedDrawing,
+    Tick {
+        time_left: u8,
+    },
 }
 
 impl TryFrom<ServerToClientEvents> for Vec<u8> {
@@ -469,7 +472,8 @@ impl TryFrom<ServerToClientEvents> for Vec<u8> {
             }
             ServerToClientEvents::AddScore { user_id, score } => {
                 let user_id_as_bytes = user_id.as_bytes();
-                let length_of_user_id = utils::turn_usize_to_vec_of_u8(user_id_as_bytes.len());
+                let length_of_user_id =
+                    utils::turn_usize_to_vec_of_u8(user_id_as_bytes.len());
                 let length_of_user_id_length_indicator = length_of_user_id.len();
 
                 let score_as_bytes = score.to_be_bytes();
@@ -491,12 +495,17 @@ impl TryFrom<ServerToClientEvents> for Vec<u8> {
                     ).as_slice()
                 ))
             }
-            ServerToClientEvents::FinishedDrawing => {
-                Ok(vec![
-                    utils::consts::BINARY_PROTOCOL_VERSION,
-                    event_as_borrowed.into()
-                ])
-            }
+            ServerToClientEvents::FinishedDrawing => Ok(vec![
+                utils::consts::BINARY_PROTOCOL_VERSION,
+                event_as_borrowed.into(),
+            ]),
+            ServerToClientEvents::Tick { time_left } => Ok(vec![
+                utils::consts::BINARY_PROTOCOL_VERSION,
+                event_as_borrowed.into(),
+                1,
+                1,
+                time_left.clone(),
+            ]),
         }
     }
 }
@@ -525,7 +534,8 @@ impl From<&ServerToClientEvents> for u8 {
             ServerToClientEvents::SendGameState { .. } => 17,
             ServerToClientEvents::Message { .. } => 18,
             ServerToClientEvents::AddScore { .. } => 19,
-            ServerToClientEvents::FinishedDrawing => 20
+            ServerToClientEvents::FinishedDrawing => 20,
+            ServerToClientEvents::Tick { .. } => 21,
         }
     }
 }

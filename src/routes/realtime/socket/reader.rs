@@ -1,6 +1,7 @@
-use rocket::futures::StreamExt;
 use rocket::tokio;
+use rocket::{futures::StreamExt, tokio::sync::broadcast::error::RecvError};
 
+use crate::state::TickerCommand;
 use crate::{
     events::{self, ClientToServerEvents},
     state, utils,
@@ -19,6 +20,7 @@ pub async fn create_websocket_reader(
     server_messages: &rocket::State<
         tokio::sync::broadcast::Sender<events::WebSocketMessage>,
     >,
+    ticker_msg: &rocket::State<tokio::sync::broadcast::Sender<state::TickerMsg>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     while let Some(message) = stream.next().await {
         let message = message?;
@@ -34,6 +36,7 @@ pub async fn create_websocket_reader(
                         &user_id,
                         game_state,
                         server_messages,
+                        ticker_msg,
                     )
                     .await?
                     {
@@ -168,7 +171,14 @@ pub async fn create_websocket_reader(
                     println!("Closing connection: {:#?}", close_frame);
                 }
 
-                on_reader_close(&room_id, &user_id, game_state, server_messages).await?;
+                on_reader_close(
+                    &room_id,
+                    &user_id,
+                    game_state,
+                    server_messages,
+                    ticker_msg,
+                )
+                .await?;
 
                 break;
             }
@@ -186,6 +196,7 @@ async fn on_reader_close(
     server_messages: &rocket::State<
         tokio::sync::broadcast::Sender<events::WebSocketMessage>,
     >,
+    ticker_msg: &rocket::State<tokio::sync::broadcast::Sender<state::TickerMsg>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut rooms = game_state.rooms.lock().await;
     let mut users = game_state.users.lock().await;
@@ -221,7 +232,13 @@ async fn on_reader_close(
     if room.state != state::RoomState::Waiting && room.state != state::RoomState::Finished
     {
         if room.amount_of_users == 1 {
-            reset_room(room, room_id, user_id_who_disconnected, server_messages)?;
+            reset_room(
+                room,
+                room_id,
+                user_id_who_disconnected,
+                server_messages,
+                ticker_msg,
+            )?;
         } else {
             handle_playing_room(
                 &mut users,
@@ -229,6 +246,8 @@ async fn on_reader_close(
                 room_id,
                 user_id_who_disconnected,
                 server_messages,
+                ticker_msg,
+                game_state,
             )?;
         }
     }
@@ -301,6 +320,8 @@ fn handle_playing_room(
     server_messages: &rocket::State<
         tokio::sync::broadcast::Sender<events::WebSocketMessage>,
     >,
+    ticker_msg: &rocket::State<tokio::sync::broadcast::Sender<state::TickerMsg>>,
+    game_state: &rocket::State<state::GameState>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if let state::RoomState::Playing {
         current_user_id, ..
@@ -312,6 +333,13 @@ fn handle_playing_room(
     } else {
         unreachable!();
     }
+
+    // We just delete an existing ticker if the user who disconnected is the one
+    // who's drawing since we would be changing the timer no matter  what.
+    let _ = ticker_msg.send(state::TickerMsg {
+        room_id: room_id.to_string(),
+        command: state::TickerCommand::Delete,
+    });
 
     let amount_of_users_who_has_not_drawn = users.iter().fold(0, |acc, user| {
         if user.room_id == room_id && !user.has_drawn {
@@ -384,6 +412,13 @@ fn handle_playing_room(
             room_id,
             server_messages,
         )?;
+
+        create_ticker(
+            room_id,
+            game_state.rooms.clone(),
+            server_messages,
+            ticker_msg,
+        );
     }
 
     if amount_of_users_who_has_not_drawn != 0 {
@@ -395,6 +430,13 @@ fn handle_playing_room(
             room_id,
             server_messages,
         )?;
+
+        create_ticker(
+            room_id,
+            game_state.rooms.clone(),
+            server_messages,
+            ticker_msg,
+        );
     }
 
     Ok(())
@@ -432,7 +474,7 @@ fn handle_new_turn(
 
     *playing_state = state::PlayingState::PickingAWord {
         words_to_pick: words_to_pick.clone(),
-        started_at: time::OffsetDateTime::now_utc(),
+        time_left: utils::consts::PICK_WORD_TIME_LIMIT,
     };
 
     let _ = events::WebSocketMessageBuilder::default()
@@ -456,6 +498,7 @@ fn reset_room(
     server_messages: &rocket::State<
         tokio::sync::broadcast::Sender<events::WebSocketMessage>,
     >,
+    ticker_msg: &rocket::State<tokio::sync::broadcast::Sender<state::TickerMsg>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     room.state = state::RoomState::Waiting;
 
@@ -470,6 +513,11 @@ fn reset_room(
         .build()?
         .send(server_messages);
 
+    let _ = ticker_msg.send(state::TickerMsg {
+        room_id: room_id.to_string(),
+        command: state::TickerCommand::Delete,
+    });
+
     Ok(())
 }
 
@@ -480,6 +528,7 @@ async fn start_game_event(
     server_messages: &rocket::State<
         tokio::sync::broadcast::Sender<events::WebSocketMessage>,
     >,
+    ticker_msg: &rocket::State<tokio::sync::broadcast::Sender<state::TickerMsg>>,
 ) -> Result<WebSocketOperationResult, Box<dyn std::error::Error>> {
     let mut rooms = game_state.rooms.lock().await;
     let room = rooms
@@ -559,7 +608,7 @@ async fn start_game_event(
     room.state = state::RoomState::Playing {
         playing_state: state::PlayingState::PickingAWord {
             words_to_pick: words_to_pick.clone(),
-            started_at: time::OffsetDateTime::now_utc(),
+            time_left: utils::consts::PICK_WORD_TIME_LIMIT,
         },
         current_user_id: user_to_draw.id.clone(),
         current_round: 1,
@@ -597,5 +646,109 @@ async fn start_game_event(
         .build()?
         .send(server_messages);
 
+    create_ticker(
+        room_id,
+        game_state.rooms.clone(),
+        server_messages,
+        ticker_msg,
+    );
+
     Ok(WebSocketOperationResult::Continue)
+}
+
+fn create_ticker(
+    room_id: &str,
+    rooms: std::sync::Arc<rocket::futures::lock::Mutex<Vec<state::Room>>>,
+    server_messages: &rocket::State<
+        tokio::sync::broadcast::Sender<events::WebSocketMessage>,
+    >,
+    ticker_msg: &rocket::State<tokio::sync::broadcast::Sender<state::TickerMsg>>,
+) {
+    let mut ticker_msg_rx = ticker_msg.subscribe();
+    let room_id = room_id.to_string();
+    let server_messages = server_messages.inner().clone();
+
+    tokio::spawn(async move {
+        let mut interval =
+            tokio::time::interval(tokio::time::Duration::from_millis(1_000));
+
+        loop {
+            tokio::select! {
+                _ = interval.tick() => match on_tick(
+                    &room_id,
+                    &mut rooms.lock().await,
+                    &server_messages
+                ) {
+                    WebSocketOperationResult::Break => break,
+                    WebSocketOperationResult::Continue => continue
+                },
+                msg = ticker_msg_rx.recv() => {
+                    match msg {
+                        Ok(msg) => {
+                            if room_id != msg.room_id {
+                                continue;
+                            }
+
+                            match msg.command {
+                                TickerCommand::Delete => break
+                            }
+                        },
+                        Err(RecvError::Closed) => break,
+                        Err(RecvError::Lagged(err)) => {
+                            eprintln!("Lagged in ticker: {:?}", err);
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+
+        println!("Exiting timer");
+    });
+}
+
+fn on_tick(
+    room_id: &str,
+    rooms: &mut [state::Room],
+    server_messages: &tokio::sync::broadcast::Sender<events::WebSocketMessage>,
+) -> WebSocketOperationResult {
+    let Some(room) = rooms.iter_mut().find(|r| r.id == room_id) else {
+        return WebSocketOperationResult::Break;
+    };
+
+    let state::RoomState::Playing { playing_state, .. } = &mut room.state else {
+        return WebSocketOperationResult::Break;
+    };
+
+    let time_left = match playing_state {
+        state::PlayingState::Drawing { time_left, .. } => time_left,
+        state::PlayingState::PickingAWord { time_left, .. } => time_left,
+    };
+
+    if *time_left == 0 {
+        return WebSocketOperationResult::Break;
+    }
+
+    *time_left -= 1;
+
+    let _ = server_messages.send(
+        events::WebSocketMessageBuilder::default()
+            .room_id(room_id.to_string())
+            .r#type(events::WebSocketMessageType::Everyone)
+            .message(ws::Message::Binary(
+                events::ServerToClientEvents::Tick {
+                    time_left: time_left.clone(),
+                }
+                .try_into()
+                .unwrap(),
+            ))
+            .build()
+            .unwrap(),
+    );
+
+    if *time_left == 0 {
+        return WebSocketOperationResult::Break;
+    }
+
+    WebSocketOperationResult::Continue
 }

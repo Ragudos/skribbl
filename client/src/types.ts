@@ -1,5 +1,6 @@
-import { HTMLElementListener, WebSocketListener } from "./listener";
 import type { Canvas } from "./canvas";
+import { HTMLElementListener, WebSocketListener } from "./listener";
+import { Ticker } from "./timer";
 
 export type PlayingState =
     | {
@@ -68,7 +69,14 @@ export type GameState = {
     usersInRoom: User[];
     binaryProtocolVersion: number | null;
     canvas: Canvas | null;
-	wordListBtnListeners: null | [HTMLElementListener<"click">, HTMLElementListener<"click">, HTMLElementListener<"click">]
+    wordListBtnListeners:
+        | null
+        | [
+              HTMLElementListener<"click">,
+              HTMLElementListener<"click">,
+              HTMLElementListener<"click">,
+          ];
+    ticker: Ticker | null;
 };
 
 export enum ClientToServerEvents {
@@ -102,4 +110,7 @@ export enum ServerToClientEvents {
     ChangeColor = 16,
     SendGameState = 17,
     SendMessage = 18,
+    AddScore = 19,
+    FinishedDrawing = 20,
+    Tick = 21,
 }

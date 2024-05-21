@@ -38,5 +38,6 @@ pub async fn init_rocket(
         .mount("/dist", rocket::fs::FileServer::from("dist"))
         .attach(fairings::stage_templates())
         .manage(tokio::sync::broadcast::channel::<events::WebSocketMessage>(1024).0)
+        .manage(tokio::sync::broadcast::channel::<state::TickerMsg>(1024).0)
         .manage(game_state)
 }

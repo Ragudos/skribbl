@@ -31,6 +31,7 @@ pub async fn ws_endpoint<'st>(
     server_messages: &'st rocket::State<
         tokio::sync::broadcast::Sender<events::WebSocketMessage>,
     >,
+    ticker_msg: &'st rocket::State<tokio::sync::broadcast::Sender<state::TickerMsg>>,
     params: Result<WsEndpointParams, rocket::form::Errors<'st>>,
     ws: ws::WebSocket,
 ) -> ws::Channel<'st> {
@@ -255,7 +256,8 @@ pub async fn ws_endpoint<'st>(
                         user_id.clone(),
                         game_state,
                         stream,
-                        server_messages
+                        server_messages,
+                        ticker_msg
                     );
                     let writer = writer::create_websocket_writer(
                         room_id.clone(),

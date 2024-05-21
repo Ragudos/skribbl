@@ -388,3 +388,13 @@ export function handleSendGameState(data: Array<number>) {
 }
 
 export function handleSendMessage(data: Array<number>) {}
+
+export function handleAddScore(data: Array<number>) {}
+
+export function handleFinishedDrawing(_data: Array<number>) {}
+
+export function handleTick(data: Array<number>) {
+    const timeLeft = parsePartOfBinaryData(data, "int8");
+
+    console.log(timeLeft);
+}

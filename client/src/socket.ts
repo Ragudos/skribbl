@@ -16,10 +16,12 @@ import {
     togglePickingAWordModal,
 } from "./dom";
 import {
+    handleAddScore,
     handleChangeColor,
     handleConnectError,
     handleEndGame,
     handleError,
+    handleFinishedDrawing,
     handleNewHost,
     handleNewRound,
     handleNewTurn,
@@ -33,6 +35,7 @@ import {
     handleSendGameState,
     handleSendMessage,
     handleStartGame,
+    handleTick,
     handleUserJoined,
     handleUserLeft,
 } from "./events";
@@ -184,6 +187,15 @@ export function wsOnMessage(e: MessageEvent) {
                 break;
             case ServerToClientEvents.SendMessage:
                 handleSendMessage(data);
+                break;
+            case ServerToClientEvents.AddScore:
+                handleAddScore(data);
+                break;
+            case ServerToClientEvents.FinishedDrawing:
+                handleFinishedDrawing(data);
+                break;
+            case ServerToClientEvents.Tick:
+                handleTick(data);
                 break;
             default:
                 throw new Error("Received invalid event from server.");

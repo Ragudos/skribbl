@@ -14,5 +14,6 @@ export const STATE: GameState = {
 
     canvas: null,
 
-	wordListBtnListeners: null
+    wordListBtnListeners: null,
+    ticker: null,
 };
