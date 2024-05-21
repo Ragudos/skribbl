@@ -725,12 +725,6 @@ fn on_tick(
         state::PlayingState::PickingAWord { time_left, .. } => time_left,
     };
 
-    if *time_left == 0 {
-        return WebSocketOperationResult::Break;
-    }
-
-    *time_left -= 1;
-
     let _ = server_messages.send(
         events::WebSocketMessageBuilder::default()
             .room_id(room_id.to_string())
@@ -749,6 +743,8 @@ fn on_tick(
     if *time_left == 0 {
         return WebSocketOperationResult::Break;
     }
+
+    *time_left -= 1;
 
     WebSocketOperationResult::Continue
 }
