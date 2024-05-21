@@ -1,9 +1,16 @@
-import { Point } from "./canvas";
+import {
+    Canvas,
+    canvasPointerDownListener,
+    canvasPointerLeaveListener,
+    canvasPointerMoveListener,
+    windowPointerUpListenerForCanvas,
+} from "./canvas";
 import {
     addUserToListOfPlayersElement,
+    getDrawingCanvas,
     getListOfPlayersElement,
     getWordList,
-    initializeWaitingRoom,
+    getWordToDrawEl,
     onWordListBtnClick,
     removeUserFromListOfPlayersElement,
     setClientAsHostIfTrue,
@@ -116,7 +123,7 @@ export function handleStartGame(_data: Array<number>) {
 }
 
 export function handlePickAWord(data: Array<number>) {
-	if (STATE.socket.connectionState !== "connected") {
+    if (STATE.socket.connectionState !== "connected") {
         return;
     }
 
@@ -132,62 +139,69 @@ export function handlePickAWord(data: Array<number>) {
         return;
     }
 
-	if (STATE.room.state.playing.currentUserId !== STATE.user.id) {
-		console.error(
-			"Received event `pickAWord` despite client not being the one to draw."
-		);
+    if (STATE.room.state.playing.currentUserId !== STATE.user.id) {
+        console.error(
+            "Received event `pickAWord` despite client not being the one to draw.",
+        );
 
-		return;
-	}
+        return;
+    }
 
-	const stringifiedWords = parsePartOfBinaryData(data, "string");
-	const words = JSON.parse(stringifiedWords);
+    const stringifiedWords = parsePartOfBinaryData(data, "string");
+    const words = JSON.parse(stringifiedWords);
 
-	if (!parseAsTupleOfThreeStrings(words)) {
-		throw new Error("Received invalid payload");
-	}
+    if (!parseAsTupleOfThreeStrings(words)) {
+        throw new Error("Received invalid payload");
+    }
 
-	STATE.room.state.playing.playingState = {
-		pickingAWord: {
-			wordsToPick: words
-		}
-	};
+    STATE.room.state.playing.playingState = {
+        pickingAWord: {
+            wordsToPick: words,
+        },
+    };
 
-	getWordList().innerHTML = "";
+    getWordList().innerHTML = "";
 
-	const buttonListeners: HTMLElementListener<"click">[] = [];
+    const buttonListeners: HTMLElementListener<"click">[] = [];
 
-	for (let i = 0; i < words.length; ++i) {
-		const li = document.createElement("li");
+    for (let i = 0; i < words.length; ++i) {
+        const li = document.createElement("li");
 
-		const buttonId = `word-${words[i]}`;
-		const button = document.createElement("button");
+        const buttonId = `word-${words[i]}`;
+        const button = document.createElement("button");
 
-		button.value = words[i];
-		button.id = buttonId;
-		button.textContent = words[i];
+        button.value = words[i];
+        button.id = buttonId;
+        button.textContent = words[i];
 
-		li.appendChild(button);
-		getWordList().appendChild(li);
+        li.appendChild(button);
+        getWordList().appendChild(li);
 
-		const listener = new HTMLElementListener(buttonId, "click", onWordListBtnClick);
+        const listener = new HTMLElementListener(
+            buttonId,
+            "click",
+            onWordListBtnClick,
+        );
 
-		listener.listen();
-		buttonListeners.push(listener);
-	}
+        listener.listen();
+        buttonListeners.push(listener);
+    }
 
-	STATE.wordListBtnListeners = buttonListeners as typeof STATE.wordListBtnListeners;
-	togglePickingAWordModal(true);
+    STATE.wordListBtnListeners =
+        buttonListeners as typeof STATE.wordListBtnListeners;
+    togglePickingAWordModal(true);
 }
 
-function parseAsTupleOfThreeStrings(strings: unknown): strings is [string, string, string] {
-	if (!Array.isArray(strings) || strings.length !== 3) {
-		return false;
-	}
+function parseAsTupleOfThreeStrings(
+    strings: unknown,
+): strings is [string, string, string] {
+    if (!Array.isArray(strings) || strings.length !== 3) {
+        return false;
+    }
 
-	return !strings.some((string) => {
-		return typeof string !== "string"
-	});
+    return !strings.some((string) => {
+        return typeof string !== "string";
+    });
 }
 
 export function handleEndGame(data: Array<number>) {}
@@ -203,21 +217,28 @@ export function handleResetRoom(_data: Array<number>) {
         );
     }
 
+    if (STATE.room.state !== "finished" && STATE.room.state !== "waiting") {
+        canvasPointerDownListener.disconnect();
+        canvasPointerMoveListener.disconnect();
+        windowPointerUpListenerForCanvas.disconnect();
+        canvasPointerLeaveListener.disconnect();
+    }
+
     STATE.room.state = "waiting";
 
     STATE.canvas?.destroy();
     STATE.canvas = null;
-	
-	if (STATE.wordListBtnListeners) {
-		for (let i = 0; i < STATE.wordListBtnListeners.length; ++i) {
-			STATE.wordListBtnListeners[i].disconnect();
-		}
 
-		STATE.wordListBtnListeners = null;
+    if (STATE.wordListBtnListeners) {
+        for (let i = 0; i < STATE.wordListBtnListeners.length; ++i) {
+            STATE.wordListBtnListeners[i].disconnect();
+        }
 
-		getWordList().innerHTML = "";
-		togglePickingAWordModal(false);
-	}
+        STATE.wordListBtnListeners = null;
+
+        getWordList().innerHTML = "";
+        togglePickingAWordModal(false);
+    }
 
     showRoom("waiting-room");
     // If we reset the room, the host will be the only player left anyway
@@ -248,9 +269,33 @@ export function handleNewTurn(data: Array<number>) {
 }
 
 export function handleNewWord(data: Array<number>) {
-	const word = parsePartOfBinaryData(data, "string");
+    if (STATE.socket.connectionState !== "connected") {
+        return;
+    }
 
-	console.log(word);
+    if (
+        !STATE.room ||
+        !STATE.user ||
+        STATE.room.state === "waiting" ||
+        STATE.room.state === "finished"
+    ) {
+        throw new Error(
+            "Received event `newWord` despite state being empty or room not in playing state.",
+        );
+    }
+
+    const word = parsePartOfBinaryData(data, "string");
+
+    getWordToDrawEl().textContent = word;
+    togglePickingAWordModal(false);
+    STATE.canvas = new Canvas(getDrawingCanvas().getContext("2d")!);
+
+    if (STATE.user.id === STATE.room.state.playing.currentUserId) {
+        canvasPointerDownListener.listen();
+        canvasPointerMoveListener.listen();
+        windowPointerUpListenerForCanvas.listen();
+        canvasPointerLeaveListener.listen();
+    }
 }
 
 export function handleNewRound(data: Array<number>) {}
@@ -275,10 +320,42 @@ export function handleNewHost(data: Array<number>) {
     }
 }
 
-export function handlePointerDown(data: Array<number>) {}
-export function handlePointerMove(data: Array<number>) {}
-export function handlePointerUp(data: Array<number>) {}
-export function handlePointerLeave(data: Array<number>) {}
+export function handlePointerDown(_data: Array<number>) {
+    if (!STATE.canvas) {
+        return;
+    }
+
+    STATE.canvas.isDrawing = true;
+}
+
+export function handlePointerMove(data: Array<number>) {
+    if (!STATE.canvas) {
+        return;
+    }
+
+    const x = parsePartOfBinaryData(data, "float64");
+    const y = parsePartOfBinaryData(data, "float64");
+
+    STATE.canvas.drawLine(x, y);
+}
+
+export function handlePointerUp(_data: Array<number>) {
+    if (!STATE.canvas) {
+        return;
+    }
+
+    STATE.canvas.isDrawing = false;
+    STATE.canvas.resetPrevPoint();
+}
+
+export function handlePointerLeave(_data: Array<number>) {
+    if (!STATE.canvas) {
+        return;
+    }
+
+    STATE.canvas.resetPrevPoint();
+}
+
 export function handleChangeColor(data: Array<number>) {}
 
 export function handleSendGameState(data: Array<number>) {

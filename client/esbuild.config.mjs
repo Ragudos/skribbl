@@ -28,7 +28,7 @@ if (argv.includes("--watch")) {
     await esbuild.build({
         ...config,
         minify: true,
-        defined: {
+        define: {
             "import.meta.env.DEV": "false",
             "import.meta.env.PROD": "true",
         },

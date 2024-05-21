@@ -1,7 +1,10 @@
 use rocket::futures::StreamExt;
 use rocket::tokio;
 
-use crate::{events::{self, ClientToServerEvents}, state, utils};
+use crate::{
+    events::{self, ClientToServerEvents},
+    state, utils,
+};
 
 enum WebSocketOperationResult {
     Continue,
@@ -42,16 +45,30 @@ pub async fn create_websocket_reader(
                         // drawing.
 
                         let _ = events::WebSocketMessageBuilder::default()
-                            .r#type(events::WebSocketMessageType::Everyone)
+                            .r#type(events::WebSocketMessageType::Broadcast {
+                                sender_id: user_id.clone(),
+                            })
                             .room_id(room_id.clone())
-                            .message(
-                                ws::Message::Binary(
-                                    events::ServerToClientEvents::NewWord { word }.try_into()?
-                                )
-                            )
+                            .message(ws::Message::Binary(
+                                events::ServerToClientEvents::NewWord {
+                                    word: utils::obfuscate_word(&word),
+                                }
+                                .try_into()?,
+                            ))
                             .build()?
                             .send(server_messages);
-                    },
+                        let _ = events::WebSocketMessageBuilder::default()
+                            .r#type(events::WebSocketMessageType::User {
+                                receiver_id: user_id.clone(),
+                            })
+                            .room_id(room_id.clone())
+                            .message(ws::Message::Binary(
+                                events::ServerToClientEvents::NewWord { word }
+                                    .try_into()?,
+                            ))
+                            .build()?
+                            .send(server_messages);
+                    }
                     events::ClientToServerEvents::PointerUp => {
                         // TODO: Add check if we need to send this by checking if someone is
                         // drawing.
@@ -59,14 +76,12 @@ pub async fn create_websocket_reader(
                         let _ = events::WebSocketMessageBuilder::default()
                             .r#type(events::WebSocketMessageType::Everyone)
                             .room_id(room_id.clone())
-                            .message(
-                                ws::Message::Binary(
-                                    events::ServerToClientEvents::PointerUp.try_into()?
-                                )
-                            )
+                            .message(ws::Message::Binary(
+                                events::ServerToClientEvents::PointerUp.try_into()?,
+                            ))
                             .build()?
                             .send(server_messages);
-                    },
+                    }
                     events::ClientToServerEvents::PointerDown => {
                         // TODO: Add check if we need to send this by checking if someone is
                         // drawing.
@@ -74,14 +89,12 @@ pub async fn create_websocket_reader(
                         let _ = events::WebSocketMessageBuilder::default()
                             .r#type(events::WebSocketMessageType::Everyone)
                             .room_id(room_id.clone())
-                            .message(
-                                ws::Message::Binary(
-                                    events::ServerToClientEvents::PointerDown.try_into()?
-                                )
-                            )
+                            .message(ws::Message::Binary(
+                                events::ServerToClientEvents::PointerDown.try_into()?,
+                            ))
                             .build()?
                             .send(server_messages);
-                    },
+                    }
                     events::ClientToServerEvents::PointerLeave => {
                         // TODO: Add check if we need to send this by checking if someone is
                         // drawing.
@@ -89,68 +102,62 @@ pub async fn create_websocket_reader(
                         let _ = events::WebSocketMessageBuilder::default()
                             .r#type(events::WebSocketMessageType::Everyone)
                             .room_id(room_id.clone())
-                            .message(
-                                ws::Message::Binary(
-                                    events::ServerToClientEvents::PointerLeave.try_into()?
-                                )
-                            )
+                            .message(ws::Message::Binary(
+                                events::ServerToClientEvents::PointerLeave.try_into()?,
+                            ))
                             .build()?
                             .send(server_messages);
-                    },
+                    }
                     events::ClientToServerEvents::PointerMove { x, y } => {
                         // TODO: Add check if we need to send this by checking if someone is
                         // drawing.
- 
+
                         let _ = events::WebSocketMessageBuilder::default()
                             .r#type(events::WebSocketMessageType::Everyone)
                             .room_id(room_id.clone())
-                            .message(
-                                ws::Message::Binary(
-                                    events::ServerToClientEvents::PointerMove { x, y }.try_into()?
-                                )
-                            )
+                            .message(ws::Message::Binary(
+                                events::ServerToClientEvents::PointerMove { x, y }
+                                    .try_into()?,
+                            ))
                             .build()?
                             .send(server_messages);
-                    },
+                    }
                     events::ClientToServerEvents::ChangeColor { color } => {
                         // TODO: Add check if we need to send this by checking if someone is
                         // drawing.
                         let _ = events::WebSocketMessageBuilder::default()
                             .r#type(events::WebSocketMessageType::Everyone)
                             .room_id(room_id.clone())
-                            .message(
-                                ws::Message::Binary(
-                                    events::ServerToClientEvents::ChangeColor { color }.try_into()?
-                                )
-                            )
+                            .message(ws::Message::Binary(
+                                events::ServerToClientEvents::ChangeColor { color }
+                                    .try_into()?,
+                            ))
                             .build()?
                             .send(server_messages);
-                    },
+                    }
                     ClientToServerEvents::FinishedDrawing => {
                         // TODO: Add check if we need to send this by checking if someone is
                         // drawing.
                         let _ = events::WebSocketMessageBuilder::default()
                             .r#type(events::WebSocketMessageType::Everyone)
                             .room_id(room_id.clone())
-                            .message(
-                                ws::Message::Binary(
-                                    events::ServerToClientEvents::FinishedDrawing.try_into()?
-                                )
-                            )
+                            .message(ws::Message::Binary(
+                                events::ServerToClientEvents::FinishedDrawing
+                                    .try_into()?,
+                            ))
                             .build()?
                             .send(server_messages);
-                    },
+                    }
                     events::ClientToServerEvents::Message { message } => {
                         // TODO: Add check logic to see if a message is === to word being drawn if
                         // someone is drawing.
                         let _ = events::WebSocketMessageBuilder::default()
                             .r#type(events::WebSocketMessageType::Everyone)
                             .room_id(room_id.clone())
-                            .message(
-                                ws::Message::Binary(
-                                    events::ServerToClientEvents::Message { message }.try_into()?
-                                )
-                            )
+                            .message(ws::Message::Binary(
+                                events::ServerToClientEvents::Message { message }
+                                    .try_into()?,
+                            ))
                             .build()?
                             .send(server_messages);
                     }

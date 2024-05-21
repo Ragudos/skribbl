@@ -1,7 +1,7 @@
 import {
     canvasPointerDownListener,
     canvasPointerLeaveListener,
-    windowPointerMoveListenerForCanvas,
+    canvasPointerMoveListener,
     windowPointerUpListenerForCanvas,
 } from "./canvas";
 import {
@@ -218,7 +218,7 @@ export function wsOnClose() {
         canvasPointerDownListener.disconnect();
         canvasPointerLeaveListener.disconnect();
         windowPointerUpListenerForCanvas.disconnect();
-        windowPointerMoveListenerForCanvas.disconnect();
+        canvasPointerMoveListener.disconnect();
     }
 
     STATE.room = null;
@@ -230,19 +230,18 @@ export function wsOnClose() {
 
     STATE.binaryProtocolVersion = null;
 
-	if (STATE.wordListBtnListeners) {
-		for (let i = 0; i < STATE.wordListBtnListeners.length; ++i) {
-			STATE.wordListBtnListeners[i].disconnect();
-		}
+    if (STATE.wordListBtnListeners) {
+        for (let i = 0; i < STATE.wordListBtnListeners.length; ++i) {
+            STATE.wordListBtnListeners[i].disconnect();
+        }
 
-		STATE.wordListBtnListeners = null;
+        STATE.wordListBtnListeners = null;
 
-		getWordList().innerHTML = "";
-	}
+        getWordList().innerHTML = "";
+    }
 
-
-	getUserToDrawUsername().textContent = "";
-	togglePickingAWordModal(false);
+    getUserToDrawUsername().textContent = "";
+    togglePickingAWordModal(false);
 
     getRoomLinkElement().setAttribute("hidden", "");
     getListOfPlayersElement().setAttribute("hidden", "");

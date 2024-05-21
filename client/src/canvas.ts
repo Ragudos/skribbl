@@ -1,6 +1,7 @@
 import { HTMLElementListener, WindowListener } from "./listener";
 import { STATE } from "./state";
 import { ClientToServerEvents } from "./types";
+import { getApproximateCursorPositionInCanvas } from "./utils";
 
 export type CanvasDrawMode = "draw" | "erase";
 
@@ -19,9 +20,10 @@ export const canvasPointerLeaveListener = new HTMLElementListener(
     "pointerleave",
     onCanvasPointerLeave,
 );
-export const windowPointerMoveListenerForCanvas = new WindowListener(
+export const canvasPointerMoveListener = new HTMLElementListener(
+    "drawing-canvas",
     "pointermove",
-    onWindowPointerMove,
+    onCanvasPointerMove,
 );
 export const windowPointerUpListenerForCanvas = new WindowListener(
     "pointerup",
@@ -29,7 +31,7 @@ export const windowPointerUpListenerForCanvas = new WindowListener(
 );
 
 export class Canvas {
-    static DEFAULT_LINE_WIDTH = 10;
+    static DEFAULT_LINE_WIDTH = 2;
     static DEFAULT_LINE_COLOR = "black";
     static DEFAULT_FILL_STYLE = "white";
     static DEFAULT_LINE_CAP: CanvasLineCap = "round";
@@ -63,11 +65,6 @@ export class Canvas {
             this._ctx.canvas.width,
             this._ctx.canvas.height,
         );
-
-        canvasPointerDownListener.disconnect();
-        windowPointerUpListenerForCanvas.disconnect();
-        windowPointerMoveListenerForCanvas.disconnect();
-        canvasPointerLeaveListener.disconnect();
     }
 
     drawLine(x: number, y: number) {
@@ -175,7 +172,7 @@ function onCanvasPointerDown() {
     );
 }
 
-function onWindowPointerMove(e: MouseEvent) {
+function onCanvasPointerMove(e: MouseEvent) {
     if (
         !STATE.canvas ||
         STATE.binaryProtocolVersion === null ||
@@ -188,6 +185,42 @@ function onWindowPointerMove(e: MouseEvent) {
     const clientX = e.clientX;
     const clientY = e.clientY;
     const canvasRect = STATE.canvas._ctx.canvas.getBoundingClientRect();
+
+    const x = getApproximateCursorPositionInCanvas(
+        clientX,
+        canvasRect.x,
+        STATE.canvas._ctx.canvas.width,
+        canvasRect.width,
+    );
+
+    const y = getApproximateCursorPositionInCanvas(
+        clientY,
+        canvasRect.y,
+        STATE.canvas._ctx.canvas.height,
+        canvasRect.height,
+    );
+
+    const dataViewBinaryX = new DataView(new ArrayBuffer(8));
+    const dataViewBinaryY = new DataView(new ArrayBuffer(8));
+
+    dataViewBinaryX.setFloat64(0, x);
+    dataViewBinaryY.setFloat64(0, y);
+
+    const binaryX = new Uint8Array(dataViewBinaryX.buffer);
+    const binaryY = new Uint8Array(dataViewBinaryY.buffer);
+
+    STATE.socket.ws.send(
+        new Uint8Array([
+            STATE.binaryProtocolVersion,
+            ClientToServerEvents.PointerMove,
+            1,
+            8,
+            ...binaryX,
+            1,
+            8,
+            ...binaryY,
+        ]),
+    );
 }
 
 function onCanvasPointerLeave() {

@@ -63,45 +63,47 @@ export function setUserToDraw() {
 
                 return STATE.room.state.playing.currentUserId === user.id;
             })?.displayName ?? "";
-		togglePickingAWordModal(true);
+        togglePickingAWordModal(true);
     }
 }
 
 export function onWordListBtnClick(e: Event) {
-	if (STATE.socket.connectionState !== "connected") {
-		throw new Error("Received event `click` from a button in `word-list` despite socket not being in `connected` connectionState");
-	}
+    if (STATE.socket.connectionState !== "connected") {
+        throw new Error(
+            "Received event `click` from a button in `word-list` despite socket not being in `connected` connectionState",
+        );
+    }
 
-	if (STATE.binaryProtocolVersion === null) {
-		return;
-	}
+    if (STATE.binaryProtocolVersion === null) {
+        return;
+    }
 
-	if (!STATE.wordListBtnListeners) {
-		throw new Error("Received event `click` from a button in `word-list` despite its listener not in state");
-	}
+    if (!STATE.wordListBtnListeners) {
+        throw new Error(
+            "Received event `click` from a button in `word-list` despite its listener not in state",
+        );
+    }
 
-	const value = (e.currentTarget as HTMLButtonElement).value;
+    const value = (e.currentTarget as HTMLButtonElement).value;
 
-	for (let i = 0; i < STATE.wordListBtnListeners.length; ++i) {
-		STATE.wordListBtnListeners[i].disconnect();
-	}
+    for (let i = 0; i < STATE.wordListBtnListeners.length; ++i) {
+        STATE.wordListBtnListeners[i].disconnect();
+    }
 
-	STATE.wordListBtnListeners = null;
+    STATE.wordListBtnListeners = null;
 
-	const wordBinary = new TextEncoder().encode(value);
-	const lengthInU8 = turnNumberToArrayOfU8Int(wordBinary.length);
+    const wordBinary = new TextEncoder().encode(value);
+    const lengthInU8 = turnNumberToArrayOfU8Int(wordBinary.length);
 
-	STATE.socket.ws.send(
-		new Uint8Array(
-			[
-				STATE.binaryProtocolVersion,
-				ClientToServerEvents.PickAWord,
-				lengthInU8.length,
-				...lengthInU8,
-				...wordBinary
-			]
-		)
-	);
+    STATE.socket.ws.send(
+        new Uint8Array([
+            STATE.binaryProtocolVersion,
+            ClientToServerEvents.PickAWord,
+            lengthInU8.length,
+            ...lengthInU8,
+            ...wordBinary,
+        ]),
+    );
 }
 
 export function populateListOfPlayers() {
@@ -206,11 +208,11 @@ export function removeUserFromListOfPlayersElement(userId: string): void {
 }
 
 export function togglePickingAWordModal(show: boolean) {
-	if (show) {
-		getPickingAWordModal().setAttribute("data-visible", "true");
-	} else {
-		getPickingAWordModal().removeAttribute("data-visible");
-	}
+    if (show) {
+        getPickingAWordModal().setAttribute("data-visible", "true");
+    } else {
+        getPickingAWordModal().removeAttribute("data-visible");
+    }
 }
 
 export function getListOfPlayersElement(): HTMLUListElement {
@@ -274,14 +276,49 @@ export function getUserToDrawUsername(): HTMLElement {
 }
 
 export function getPickingAWordModal(): HTMLElement {
-	const pickingAWordModal = document.getElementById("picking-a-word-modal");
+    const pickingAWordModal = document.getElementById("picking-a-word-modal");
 
-	if (!pickingAWordModal || !(pickingAWordModal instanceof HTMLElement)) {
-		throw new Error(
-			"Element with id `picking-a-word-modal` cannot be found or it's not an instance of a HTMLElement"
-		);
-	}
+    if (!pickingAWordModal || !(pickingAWordModal instanceof HTMLElement)) {
+        throw new Error(
+            "Element with id `picking-a-word-modal` cannot be found or it's not an instance of a HTMLElement",
+        );
+    }
 
-	return pickingAWordModal;
+    return pickingAWordModal;
 }
 
+export function getWordToDrawEl(): HTMLElement {
+    const wordToDrawEl = document.getElementById("word-to-draw");
+
+    if (!wordToDrawEl || !(wordToDrawEl instanceof HTMLElement)) {
+        throw new Error(
+            "Element with id `word-to-draw` cannot be found or it's not an instance of a HTMLElement",
+        );
+    }
+
+    return wordToDrawEl;
+}
+
+export function getTimeLeftEl(): HTMLElement {
+    const timeLeftEl = document.getElementById("time-left");
+
+    if (!timeLeftEl || !(timeLeftEl instanceof HTMLElement)) {
+        throw new Error(
+            "Element with id `time-left` cannot be found or it's not an instance of a HTMLElement",
+        );
+    }
+
+    return timeLeftEl;
+}
+
+export function getDrawingCanvas(): HTMLCanvasElement {
+    const canvas = document.getElementById("drawing-canvas");
+
+    if (!canvas || !(canvas instanceof HTMLCanvasElement)) {
+        throw new Error(
+            "Element with id `drawing-canvas` cannot be found or it's not an instance of HTMLCanvasElement",
+        );
+    }
+
+    return canvas;
+}
