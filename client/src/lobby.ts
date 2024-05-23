@@ -1,5 +1,5 @@
 import { wsHost, wsProtocol } from "./consts";
-import { initializeWaitingRoom } from "./dom";
+import { getChatContainer, initializeWaitingRoom } from "./dom";
 import { toast } from "./lib/toast";
 import { HTMLElementListener, WebSocketListener } from "./listener";
 import { connect, wsOnClose, wsOnError, wsOnMessage } from "./socket";
@@ -90,6 +90,7 @@ async function connectToSocket(mode: "play" | "create") {
         createPrivateRoomBtnListener.disconnect();
         startGameBtnListener.listen();
         initializeWaitingRoom();
+        getChatContainer().removeAttribute("hidden");
     } catch (_) {
         STATE.binaryProtocolVersion = null;
 

@@ -322,3 +322,42 @@ export function getDrawingCanvas(): HTMLCanvasElement {
 
     return canvas;
 }
+
+export function getChatContainer(): HTMLElement {
+    const chatContainer = document.getElementById("chat");
+
+    if (!chatContainer || !(chatContainer instanceof HTMLElement)) {
+        throw new Error(
+            "Element with id `chat` cannot be found or it's not an instance of HTMLElement",
+        );
+    }
+
+    return chatContainer;
+}
+
+export function getListOfChatsContainer(): HTMLUListElement {
+    const listOfChatsContainer = document.getElementById("list-of-chats");
+
+    if (
+        !listOfChatsContainer ||
+        !(listOfChatsContainer instanceof HTMLUListElement)
+    ) {
+        throw new Error(
+            "Element with id `list-of-chats` cannot be found or it's not an instance of HTMLUListElement",
+        );
+    }
+
+    return listOfChatsContainer;
+}
+
+export function getChatForm(): HTMLFormElement {
+    const chatForm = document.getElementById("chat-form");
+
+    if (!chatForm || !(chatForm instanceof HTMLFormElement)) {
+        throw new Error(
+            "Element with id `chat-form` cannot be found or it's not an instance of HTMLFormElement",
+        );
+    }
+
+    return chatForm;
+}

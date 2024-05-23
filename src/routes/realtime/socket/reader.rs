@@ -819,7 +819,6 @@ async fn on_tick(
             room,
             users,
             server_messages,
-            ticker_msg,
             is_room_in_drawing_state,
         )
         .await?
@@ -845,7 +844,6 @@ async fn on_timer_reached_zero(
     room: &mut state::Room,
     users: &std::sync::Arc<rocket::futures::lock::Mutex<Vec<state::User>>>,
     server_messages: &tokio::sync::broadcast::Sender<events::WebSocketMessage>,
-    ticker_msg: &tokio::sync::broadcast::Sender<state::TickerMsg>,
     is_room_in_drawing_state: bool,
 ) -> Result<bool, Box<dyn ::std::error::Error>> {
     let state::RoomState::Playing {

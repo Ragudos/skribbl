@@ -1,5 +1,8 @@
 :root {
     --_toastmynuts-tw: min(80vw, 25rem);
+
+    --max-content-width: 1400px;
+    --padding-inline: 1rem;
 }
 
 *,
@@ -11,7 +14,7 @@
 }
 
 [hidden] {
-    display: none;
+    display: none !important;
 }
 
 body {
@@ -74,14 +77,98 @@ input {
     border-radius: 0.25rem;
 }
 
-.main-container {
+ul:not([role="list"]),
+ol:not([role="list"]) {
     display: flex;
     align-items: center;
-    justify-content: center;
+
+    list-style-type: none;
+}
+
+#app {
+    width: min(calc(100% - var(--padding-inline) * 2), var(--max-content-width));
+    margin-inline: auto;
+}
+
+.main-container {
+    display: grid;
+    place-items: center;
+
     gap: 1rem;
-    flex-direction: column-reverse;
 
     min-height: 100dvh;
+    grid-template-areas: "players" "room" "chat";
+}
+
+@media screen and (min-width: 768px) {
+    .main-container:has(#chat:not([hidden])):has(#list-of-players:not([hidden])):has(#lobby:not([hidden])) {
+        grid-template-areas: "room room room" "players chat chat";
+    }
+}
+
+@media screen and (min-width: 1246px) {
+    .main-container:has(#chat:not([hidden])):has(#list-of-players:not([hidden])):has(#lobby:not([hidden])) {
+        grid-template-areas: "players room chat";
+        grid-template-columns: auto 1fr auto;
+    }
+}
+
+.rooms {
+    text-align: center;
+    grid-area: room;
+
+    width: 100%;
+}
+
+#chat {
+    grid-area: chat;
+
+    width: 100%;
+}
+
+#list-of-players {
+    --_padding: 0.75rem;
+
+    min-width: 200px;
+
+    width: 100%;
+
+    flex-direction: column;
+
+    box-shadow:
+        0px 1px 1px hsl(0 0% 0% / 0.25),
+        0px 2px 2px hsl(0 0% 0% / 0.25),
+        0px 4px 4px hsl(0 0% 0% / 0.25);
+
+    border-radius: 0.25rem;
+
+    grid-area: players;
+}
+
+#list-of-players > li {
+    padding-block: calc(var(--_padding) / 2);
+
+    padding-inline: var(--_padding);
+
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+#list-of-players > li:first-child {
+    padding-top: var(--_padding);
+}
+
+#list-of-players > li:last-child {
+    padding-bottom: var(--_padding);
+}
+
+#lobby {
+    max-width: calc(var(--max-content-width) * 0.5);
+}
+
+.badge {
+    font-size: 80%;
 }
 
 .rooms:not([data-current="true"]) {
@@ -136,10 +223,6 @@ button:disabled {
 
 [data-user-to-draw="true"] [data-for-user-to-draw="false"] {
     display: none;
-}
-
-#lobby {
-    width: min(100% - 2rem, 500px);
 }
 
 #lobby-buttons-container {

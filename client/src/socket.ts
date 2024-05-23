@@ -6,6 +6,8 @@ import {
 } from "./canvas";
 import {
     clearListOfPlayers,
+    getChatContainer,
+    getListOfChatsContainer,
     getListOfPlayersElement,
     getRoomLinkElement,
     getRoomLinkInputElement,
@@ -261,6 +263,9 @@ export function wsOnClose() {
     resetBodyAttributes();
     getRoomLinkInputElement().value = "";
     clearListOfPlayers();
+
+    getChatContainer().setAttribute("hidden", "");
+    getListOfChatsContainer().innerHTML = "";
 
     showRoom("lobby");
 
