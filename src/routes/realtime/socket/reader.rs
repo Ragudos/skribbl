@@ -814,7 +814,7 @@ async fn on_tick(
     }
 
     if time_left_is_zero {
-        on_timer_reached_zero(
+        if on_timer_reached_zero(
             room_id,
             room,
             users,
@@ -822,21 +822,24 @@ async fn on_tick(
             ticker_msg,
             is_room_in_drawing_state,
         )
-        .await?;
+        .await?
+        {
+            create_ticker(
+                room_id,
+                rooms.clone(),
+                users.clone(),
+                server_messages.clone(),
+                ticker_msg.clone(),
+            );
+        }
 
-        create_ticker(
-            room_id,
-            rooms.clone(),
-            users.clone(),
-            server_messages.clone(),
-            ticker_msg.clone(),
-        );
         return Ok(WebSocketOperationResult::Break);
     }
 
     Ok(WebSocketOperationResult::Continue)
 }
 
+/// Returns true if a ticker should be created again.
 async fn on_timer_reached_zero(
     room_id: &str,
     room: &mut state::Room,
@@ -844,19 +847,135 @@ async fn on_timer_reached_zero(
     server_messages: &tokio::sync::broadcast::Sender<events::WebSocketMessage>,
     ticker_msg: &tokio::sync::broadcast::Sender<state::TickerMsg>,
     is_room_in_drawing_state: bool,
-) -> Result<(), Box<dyn ::std::error::Error>> {
+) -> Result<bool, Box<dyn ::std::error::Error>> {
+    let state::RoomState::Playing {
+        playing_state,
+        current_user_id,
+        current_round,
+    } = &mut room.state
+    else {
+        unreachable!()
+    };
+
     if is_room_in_drawing_state {
-        todo!("Handling new turn after ticker reaches zero not yet made.");
-    } else {
-        let state::RoomState::Playing {
-            playing_state,
-            current_user_id,
-            ..
-        } = &mut room.state
+        if *current_round == room.max_rounds {
+            room.state = state::RoomState::Finished;
+            users.lock().await.iter_mut().for_each(|user| {
+                if user.room_id == room_id {
+                    user.has_drawn = false;
+                }
+            });
+
+            let _ = events::WebSocketMessageBuilder::default()
+                .r#type(events::WebSocketMessageType::Everyone)
+                .room_id(room_id.to_string())
+                .message(ws::Message::Binary(
+                    events::ServerToClientEvents::EndGame.try_into()?,
+                ))
+                .build()?
+                .send(server_messages);
+
+            return Ok(false);
+        }
+
+        let mut users = users.lock().await;
+        let mut users_in_room_iter = users
+            .iter_mut()
+            .filter(|user| user.room_id == room_id);
+
+        let Some(user_left_to_draw) =
+            users_in_room_iter.find(|user| user.room_id == room_id && !user.has_drawn)
         else {
-            unreachable!()
+            let mut users_in_room = users_in_room_iter.collect::<Vec<&mut state::User>>();
+
+            users_in_room.iter_mut().for_each(|user| {
+                user.has_drawn = false;
+            });
+
+            let length_of_users_in_room = users_in_room.len();
+            let user_to_draw = &mut *users_in_room
+                [rand::thread_rng().gen_range(0..length_of_users_in_room)];
+            let words_to_pick = state::WordToDraw::get_three_words();
+
+            *current_round += 1;
+            *playing_state = state::PlayingState::PickingAWord {
+                words_to_pick: words_to_pick.clone(),
+                time_left: utils::consts::PICK_WORD_TIME_LIMIT,
+            };
+            user_to_draw.has_drawn = true;
+            *current_user_id = user_to_draw.id.clone();
+
+            let _ = events::WebSocketMessageBuilder::default()
+                .r#type(events::WebSocketMessageType::Everyone)
+                .room_id(room_id.to_string())
+                .message(ws::Message::Binary(
+                    events::ServerToClientEvents::NewRound {
+                        round: current_round.clone(),
+                    }
+                    .try_into()?,
+                ))
+                .build()?
+                .send(server_messages);
+
+            let _ = events::WebSocketMessageBuilder::default()
+                .r#type(events::WebSocketMessageType::Everyone)
+                .room_id(room_id.to_string())
+                .message(ws::Message::Binary(
+                    events::ServerToClientEvents::NewTurn {
+                        user_id_to_draw: user_to_draw.id.clone(),
+                    }
+                    .try_into()?,
+                ))
+                .build()?
+                .send(server_messages);
+
+            let _ = events::WebSocketMessageBuilder::default()
+                .r#type(events::WebSocketMessageType::User {
+                    receiver_id: user_to_draw.id.clone(),
+                })
+                .room_id(room_id.to_string())
+                .message(ws::Message::Binary(
+                    events::ServerToClientEvents::PickAWord { words_to_pick }
+                        .try_into()?,
+                ))
+                .build()?
+                .send(server_messages);
+
+            return Ok(true);
         };
 
+        let words_to_pick = state::WordToDraw::get_three_words();
+
+        *playing_state = state::PlayingState::PickingAWord {
+            words_to_pick: words_to_pick.clone(),
+            time_left: utils::consts::PICK_WORD_TIME_LIMIT,
+        };
+        *current_user_id = user_left_to_draw.id.clone();
+        user_left_to_draw.has_drawn = true;
+
+        let _ = events::WebSocketMessageBuilder::default()
+            .r#type(events::WebSocketMessageType::Everyone)
+            .room_id(room_id.to_string())
+            .message(ws::Message::Binary(
+                events::ServerToClientEvents::NewTurn {
+                    user_id_to_draw: user_left_to_draw.id.clone(),
+                }
+                .try_into()?,
+            ))
+            .build()?
+            .send(server_messages);
+
+        let _ = events::WebSocketMessageBuilder::default()
+            .r#type(events::WebSocketMessageType::User {
+                receiver_id: user_left_to_draw.id.clone(),
+            })
+            .room_id(room_id.to_string())
+            .message(ws::Message::Binary(
+                events::ServerToClientEvents::PickAWord { words_to_pick }.try_into()?,
+            ))
+            .build()?
+            .send(server_messages);
+    } else {
         let word_to_draw = match playing_state {
             state::PlayingState::Drawing { .. } => unreachable!(),
             state::PlayingState::PickingAWord { words_to_pick, .. } => words_to_pick
@@ -898,5 +1017,5 @@ async fn on_timer_reached_zero(
             .send(server_messages);
     }
 
-    Ok(())
+    Ok(true)
 }
