@@ -155,7 +155,9 @@ export class Canvas {
     }
 }
 
-function onCanvasPointerDown() {
+function onCanvasPointerDown(e: Event) {
+	e.preventDefault();
+
     if (
         !STATE.canvas ||
         STATE.binaryProtocolVersion === null ||
@@ -173,6 +175,8 @@ function onCanvasPointerDown() {
 }
 
 function onCanvasPointerMove(e: MouseEvent) {
+	e.preventDefault();
+
     if (
         !STATE.canvas ||
         STATE.binaryProtocolVersion === null ||
@@ -223,7 +227,7 @@ function onCanvasPointerMove(e: MouseEvent) {
     );
 }
 
-function onCanvasPointerLeave() {
+function onCanvasPointerLeave(e: Event) {
     if (
         !STATE.canvas ||
         STATE.binaryProtocolVersion === null ||

@@ -45,11 +45,10 @@ media literacy
 youtube
 gallery
 seashore
-cameraman
+camera man
 snowman
 news reporter
 newspaper
-tetris
 cardillac
 wine
 alcohol
@@ -60,3 +59,52 @@ gold
 tire
 snowball
 motorcycle
+socks
+shoes
+computer
+whiteboard
+spoon
+telephone
+weighing scale
+Christmas Tree
+dandelions
+pickaxe
+table
+chair
+fork
+curtains
+windowsill
+umbrella
+octopus
+burger
+fries
+rabbit
+rifle
+soldier
+police
+king
+queen
+television
+barbell
+machine gun
+sand
+beach
+submarine
+coral reefs
+scissors
+glue
+mirror
+eyeglasses
+necktie
+hammer
+printer
+gear
+kite
+airplane
+paper airplane
+cocktail
+champagne
+pillow
+cushion
+springboard
+swimming pool

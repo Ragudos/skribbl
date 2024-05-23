@@ -44,6 +44,44 @@ pub async fn create_websocket_reader(
                         WebSocketOperationResult::Break => break,
                     },
                     events::ClientToServerEvents::PickAWord { word } => {
+                        let _ = ticker_msg.send(state::TickerMsg {
+                            room_id: room_id.to_string(),
+                            command: state::TickerCommand::Delete,
+                        });
+
+                        let mut rooms = game_state.rooms.lock().await;
+                        let Some(room) = rooms.iter_mut().find(|r| r.id == room_id) else {
+                            break;
+                        };
+                        let state::RoomState::Playing { playing_state, .. } = &mut room.state else {
+                            break;
+                        };
+                        
+                        {
+                            if let state::PlayingState::Drawing { .. } = playing_state {
+                                eprintln!("Received event `PickAWord` but room's `PlayingState` is `Drawing`");
+
+                                let _ = events::WebSocketMessageBuilder::default()
+                                    .r#type(events::WebSocketMessageType::User { receiver_id: user_id.clone() })
+                                    .room_id(room_id.clone())
+                                    .message(ws::Message::Binary(
+                                        events::ServerToClientEvents::Error {
+                                            message: "Something went wrong.".to_string()
+                                        }.try_into()?
+                                    ))
+                                    .build()?
+                                    .send(server_messages);
+
+                                break;
+                            }
+                        }
+
+                        
+                        *playing_state = state::PlayingState::Drawing {
+                            current_word: word.clone(),
+                            time_left: utils::consts::DRAW_IME_LIMIT
+                        };
+
                         // TODO: Add check if we need to send this by checking if someone is
                         // drawing.
 
@@ -71,11 +109,14 @@ pub async fn create_websocket_reader(
                             ))
                             .build()?
                             .send(server_messages);
+
+                        create_ticker(&room_id, game_state.rooms.clone(), game_state.users.clone(), server_messages, ticker_msg);
                     }
                     events::ClientToServerEvents::PointerUp => {
                         // TODO: Add check if we need to send this by checking if someone is
                         // drawing.
 
+                        
                         let _ = events::WebSocketMessageBuilder::default()
                             .r#type(events::WebSocketMessageType::Everyone)
                             .room_id(room_id.clone())
@@ -139,6 +180,11 @@ pub async fn create_websocket_reader(
                             .send(server_messages);
                     }
                     ClientToServerEvents::FinishedDrawing => {
+                        let _ = ticker_msg.send(state::TickerMsg {
+                            room_id: room_id.to_string(),
+                            command: state::TickerCommand::Delete,
+                        });
+
                         // TODO: Add check if we need to send this by checking if someone is
                         // drawing.
                         let _ = events::WebSocketMessageBuilder::default()
@@ -171,20 +217,20 @@ pub async fn create_websocket_reader(
                     println!("Closing connection: {:#?}", close_frame);
                 }
 
-                on_reader_close(
-                    &room_id,
-                    &user_id,
-                    game_state,
-                    server_messages,
-                    ticker_msg,
-                )
-                .await?;
-
                 break;
             }
             _ => {}
         }
     }
+
+    on_reader_close(
+        &room_id,
+        &user_id,
+        game_state,
+        server_messages,
+        ticker_msg,
+    )
+    .await?;
 
     Ok(())
 }
@@ -416,6 +462,7 @@ fn handle_playing_room(
         create_ticker(
             room_id,
             game_state.rooms.clone(),
+            game_state.users.clone(),
             server_messages,
             ticker_msg,
         );
@@ -434,6 +481,7 @@ fn handle_playing_room(
         create_ticker(
             room_id,
             game_state.rooms.clone(),
+            game_state.users.clone(),
             server_messages,
             ticker_msg,
         );
@@ -649,6 +697,7 @@ async fn start_game_event(
     create_ticker(
         room_id,
         game_state.rooms.clone(),
+        game_state.users.clone(),
         server_messages,
         ticker_msg,
     );
@@ -659,6 +708,7 @@ async fn start_game_event(
 fn create_ticker(
     room_id: &str,
     rooms: std::sync::Arc<rocket::futures::lock::Mutex<Vec<state::Room>>>,
+    users: std::sync::Arc<rocket::futures::lock::Mutex<Vec<state::User>>>,
     server_messages: &rocket::State<
         tokio::sync::broadcast::Sender<events::WebSocketMessage>,
     >,
@@ -677,8 +727,9 @@ fn create_ticker(
                 _ = interval.tick() => match on_tick(
                     &room_id,
                     &mut rooms.lock().await,
+                    &users,
                     &server_messages
-                ) {
+                ).await {
                     WebSocketOperationResult::Break => break,
                     WebSocketOperationResult::Continue => continue
                 },
@@ -707,44 +758,64 @@ fn create_ticker(
     });
 }
 
-fn on_tick(
+async fn on_tick(
     room_id: &str,
     rooms: &mut [state::Room],
+    users: &std::sync::Arc<rocket::futures::lock::Mutex<Vec<state::User>>>,
     server_messages: &tokio::sync::broadcast::Sender<events::WebSocketMessage>,
 ) -> WebSocketOperationResult {
     let Some(room) = rooms.iter_mut().find(|r| r.id == room_id) else {
         return WebSocketOperationResult::Break;
     };
 
-    let state::RoomState::Playing { playing_state, .. } = &mut room.state else {
-        return WebSocketOperationResult::Break;
-    };
+    let time_left_is_zero: bool;
 
-    let time_left = match playing_state {
-        state::PlayingState::Drawing { time_left, .. } => time_left,
-        state::PlayingState::PickingAWord { time_left, .. } => time_left,
-    };
+    {
+        let state::RoomState::Playing { playing_state, .. } = &mut room.state else {
+            return WebSocketOperationResult::Break;
+        };
 
-    let _ = server_messages.send(
-        events::WebSocketMessageBuilder::default()
-            .room_id(room_id.to_string())
-            .r#type(events::WebSocketMessageType::Everyone)
-            .message(ws::Message::Binary(
-                events::ServerToClientEvents::Tick {
-                    time_left: time_left.clone(),
-                }
-                .try_into()
+        let time_left = match playing_state {
+            state::PlayingState::Drawing { time_left, .. } => time_left,
+            state::PlayingState::PickingAWord { time_left, .. } => time_left,
+        };
+
+        let _ = server_messages.send(
+            events::WebSocketMessageBuilder::default()
+                .room_id(room_id.to_string())
+                .r#type(events::WebSocketMessageType::Everyone)
+                .message(ws::Message::Binary(
+                    events::ServerToClientEvents::Tick {
+                        time_left: time_left.clone(),
+                    }
+                    .try_into()
+                    .unwrap(),
+                ))
+                .build()
                 .unwrap(),
-            ))
-            .build()
-            .unwrap(),
-    );
+        );
 
-    if *time_left == 0 {
+        time_left_is_zero = *time_left == 0;
+
+        if !time_left_is_zero {
+            *time_left -= 1;
+        }
+    }
+
+    if time_left_is_zero {
+        on_timer_reached_zero(room_id, room, users, server_messages).await;
         return WebSocketOperationResult::Break;
     }
 
-    *time_left -= 1;
-
     WebSocketOperationResult::Continue
 }
+
+async fn on_timer_reached_zero(
+    room_id: &str,
+    room: &mut state::Room,
+    users: &std::sync::Arc<rocket::futures::lock::Mutex<Vec<state::User>>>,
+    server_messages: &tokio::sync::broadcast::Sender<events::WebSocketMessage>
+) {
+    todo!()
+}
+
