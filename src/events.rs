@@ -231,6 +231,12 @@ pub enum ServerToClientEvents {
     Tick {
         time_left: u8,
     },
+    UserGuessed {
+        user_id: String,
+    },
+    SystemMessage {
+        message: String,
+    },
 }
 
 impl TryFrom<ServerToClientEvents> for Vec<u8> {
@@ -456,7 +462,8 @@ impl TryFrom<ServerToClientEvents> for Vec<u8> {
                     ).as_slice()
                 ])
             }
-            ServerToClientEvents::Message { message } => {
+            ServerToClientEvents::Message { message }
+            | ServerToClientEvents::SystemMessage { message } => {
                 let message_as_bytes = message.as_bytes();
                 let length_of_message =
                     utils::turn_usize_to_vec_of_u8(message_as_bytes.len());
@@ -506,6 +513,20 @@ impl TryFrom<ServerToClientEvents> for Vec<u8> {
                 1,
                 time_left.clone(),
             ]),
+            ServerToClientEvents::UserGuessed { user_id } => {
+                let user_id_as_bytes = user_id.as_bytes();
+                let user_id_length =
+                    utils::turn_usize_to_vec_of_u8(user_id_as_bytes.len());
+                let length_of_user_id_length_indicator = user_id_length.len();
+
+                Ok(vec_with_slices!(
+                    utils::consts::BINARY_PROTOCOL_VERSION,
+                    event_as_borrowed.into(),
+                    length_of_user_id_length_indicator as u8;
+                    &user_id_length,
+                    user_id_as_bytes
+                ))
+            }
         }
     }
 }
@@ -536,6 +557,8 @@ impl From<&ServerToClientEvents> for u8 {
             ServerToClientEvents::AddScore { .. } => 19,
             ServerToClientEvents::FinishedDrawing => 20,
             ServerToClientEvents::Tick { .. } => 21,
+            ServerToClientEvents::UserGuessed { .. } => 22,
+            ServerToClientEvents::SystemMessage { .. } => 23,
         }
     }
 }

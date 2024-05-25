@@ -155,6 +155,9 @@ pub struct User {
     #[builder(default = "false")]
     #[serde(skip_serializing)]
     pub has_drawn: bool,
+    #[builder(default = "false")]
+    #[serde(skip_serializing)]
+    pub has_guessed: bool,
     #[builder(default)]
     #[serde(skip_serializing)]
     pub score: u16,

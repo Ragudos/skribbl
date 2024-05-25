@@ -209,17 +209,18 @@ pub async fn create_websocket_reader(
                             .send(server_messages);
                     }
                     events::ClientToServerEvents::Message { message } => {
-                        // TODO: Add check logic to see if a message is === to word being drawn if
-                        // someone is drawing.
-                        let _ = events::WebSocketMessageBuilder::default()
-                            .r#type(events::WebSocketMessageType::Everyone)
-                            .room_id(room_id.clone())
-                            .message(ws::Message::Binary(
-                                events::ServerToClientEvents::Message { message }
-                                    .try_into()?,
-                            ))
-                            .build()?
-                            .send(server_messages);
+                        match on_message(
+                            message,
+                            &room_id,
+                            &user_id,
+                            server_messages,
+                            game_state,
+                        )
+                        .await?
+                        {
+                            WebSocketOperationResult::Break => break,
+                            WebSocketOperationResult::Continue => continue,
+                        }
                     }
                 }
             }
@@ -880,7 +881,6 @@ async fn on_timer_reached_zero(
         }
 
         let mut users = users.lock().await;
-
         let Some(user_left_to_draw) = users
             .iter_mut()
             .find(|user| user.room_id == room_id && !user.has_drawn)
@@ -896,7 +896,6 @@ async fn on_timer_reached_zero(
 
             let length_of_users_in_room = users_in_room.len();
 
-            println!("Length: {}", length_of_users_in_room);
             let user_to_draw = &mut *users_in_room
                 [rand::thread_rng().gen_range(0..length_of_users_in_room)];
             let words_to_pick = state::WordToDraw::get_three_words();
@@ -1022,4 +1021,109 @@ async fn on_timer_reached_zero(
     }
 
     Ok(true)
+}
+
+async fn on_message(
+    message: String,
+    room_id: &str,
+    user_id: &str,
+    server_messages: &rocket::State<
+        tokio::sync::broadcast::Sender<events::WebSocketMessage>,
+    >,
+    game_state: &rocket::State<state::GameState>,
+) -> Result<WebSocketOperationResult, Box<dyn std::error::Error>> {
+    let mut rooms = game_state.rooms.lock().await;
+    let Some(room) = rooms.iter_mut().find(|room| room.id == room_id) else {
+        eprintln!("Received `Message` event but room does not exist");
+
+        return Ok(WebSocketOperationResult::Break);
+    };
+
+    if let state::RoomState::Playing {
+        playing_state,
+        current_user_id,
+        current_round,
+    } = &mut room.state
+    {
+        if let state::PlayingState::Drawing { current_word, .. } = playing_state {
+            if *current_word == message {
+                let mut users = game_state.users.lock().await;
+                let Some(user) = users.iter_mut().find(|user| user.id == user_id) else {
+                    eprintln!("Received `Message` event but room does not exist");
+
+                    return Ok(WebSocketOperationResult::Break);
+                };
+
+                if user.has_guessed {
+                    let _ = events::WebSocketMessageBuilder::default()
+                        .r#type(events::WebSocketMessageType::User {
+                            receiver_id: user_id.to_string(),
+                        })
+                        .room_id(room_id.to_string())
+                        .message(ws::Message::Binary(
+                            events::ServerToClientEvents::Error {
+                                message: "You cannot expose the word being drawn."
+                                    .to_string(),
+                            }
+                            .try_into()?,
+                        ))
+                        .build()?
+                        .send(server_messages);
+
+                    return Ok(WebSocketOperationResult::Continue);
+                }
+
+                user.has_guessed = true;
+                // TODO: Add a scoring system. For now, we add +10
+
+                let _ = events::WebSocketMessageBuilder::default()
+                    .r#type(events::WebSocketMessageType::User {
+                        receiver_id: user_id.to_string(),
+                    })
+                    .room_id(room_id.to_string())
+                    .message(ws::Message::Binary(
+                        events::ServerToClientEvents::AddScore {
+                            user_id: user_id.to_string(),
+                            score: 10,
+                        }
+                        .try_into()?,
+                    ))
+                    .build()?
+                    .send(server_messages);
+
+                let _ = events::WebSocketMessageBuilder::default()
+                    .r#type(events::WebSocketMessageType::User {
+                        receiver_id: user_id.to_string(),
+                    })
+                    .room_id(room_id.to_string())
+                    .message(ws::Message::Binary(
+                        events::ServerToClientEvents::UserGuessed {
+                            user_id: user_id.to_string(),
+                        }
+                        .try_into()?,
+                    ))
+                    .build()?
+                    .send(server_messages);
+
+                if users.iter().all(|user| user.has_guessed) {
+                    // TODO: Next round
+                }
+
+                return Ok(WebSocketOperationResult::Continue);
+            }
+        }
+    }
+
+    // TODO: Add check logic to see if a message is === to word being drawn if
+    // someone is drawing.
+    let _ = events::WebSocketMessageBuilder::default()
+        .r#type(events::WebSocketMessageType::Everyone)
+        .room_id(room_id.to_string())
+        .message(ws::Message::Binary(
+            events::ServerToClientEvents::Message { message }.try_into()?,
+        ))
+        .build()?
+        .send(server_messages);
+
+    Ok(WebSocketOperationResult::Continue)
 }
