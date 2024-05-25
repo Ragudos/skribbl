@@ -495,7 +495,7 @@ fn handle_playing_room(
 }
 
 fn handle_new_turn(
-    users: &[state::User],
+    users: &mut [state::User],
     current_user_to_draw_id: &mut String,
     playing_state: &mut state::PlayingState,
     user_id_who_disconnected: &str,
@@ -642,8 +642,9 @@ async fn start_game_event(
         return Ok(WebSocketOperationResult::Continue);
     }
 
-    let users = game_state.users.lock().await;
-    let Ok(user_to_draw) = utils::choose_user_in_a_room_randomly(&users, room_id) else {
+    let mut users = game_state.users.lock().await;
+    let Ok(user_to_draw) = utils::choose_user_in_a_room_randomly(&mut users, room_id)
+    else {
         println!("User to draw not found");
 
         let Some(room_idx) = rooms.iter().position(|room| room.id == room_id) else {
@@ -665,6 +666,8 @@ async fn start_game_event(
         current_user_id: user_to_draw.id.clone(),
         current_round: 1,
     };
+
+    user_to_draw.has_drawn = true;
 
     let _ = events::WebSocketMessageBuilder::default()
         .room_id(room_id.to_string())
@@ -877,20 +880,23 @@ async fn on_timer_reached_zero(
         }
 
         let mut users = users.lock().await;
-        let mut users_in_room_iter = users
-            .iter_mut()
-            .filter(|user| user.room_id == room_id);
 
-        let Some(user_left_to_draw) =
-            users_in_room_iter.find(|user| user.room_id == room_id && !user.has_drawn)
+        let Some(user_left_to_draw) = users
+            .iter_mut()
+            .find(|user| user.room_id == room_id && !user.has_drawn)
         else {
-            let mut users_in_room = users_in_room_iter.collect::<Vec<&mut state::User>>();
+            let mut users_in_room = users
+                .iter_mut()
+                .filter(|user| user.room_id == room_id)
+                .collect::<Vec<&mut state::User>>();
 
             users_in_room.iter_mut().for_each(|user| {
-                user.has_drawn = false;
+                (*user).has_drawn = false;
             });
 
             let length_of_users_in_room = users_in_room.len();
+
+            println!("Length: {}", length_of_users_in_room);
             let user_to_draw = &mut *users_in_room
                 [rand::thread_rng().gen_range(0..length_of_users_in_room)];
             let words_to_pick = state::WordToDraw::get_three_words();

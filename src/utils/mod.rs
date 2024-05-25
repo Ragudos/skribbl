@@ -25,16 +25,24 @@ pub fn get_random_word() -> &'static str {
 }
 
 pub fn choose_user_in_a_room_randomly<'st>(
-    users: &'st [state::User],
+    users: &'st mut [state::User],
     room_id: &str,
-) -> Result<&'st state::User, Box<dyn std::error::Error>> {
-    let users = users
-        .iter()
-        .filter(|u| u.room_id == room_id)
-        .collect::<Vec<_>>();
+) -> Result<&'st mut state::User, Box<dyn std::error::Error>> {
+    let mut indices = vec![];
 
-    Ok(*users
-        .get(rand::thread_rng().gen_range(0..users.len()))
+    for (i, user) in users.iter().enumerate() {
+        if user.room_id == room_id {
+            indices.push(i);
+        }
+    }
+
+    Ok(users
+        .get_mut(
+            indices
+                .get(rand::thread_rng().gen_range(0..indices.len()))
+                .ok_or("No user found in the room")?
+                .clone(),
+        )
         .ok_or("No user found in the room")?)
 }
 

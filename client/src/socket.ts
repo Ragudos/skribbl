@@ -4,6 +4,7 @@ import {
     canvasPointerMoveListener,
     windowPointerUpListenerForCanvas,
 } from "./canvas";
+import { chatFormListener } from "./chats";
 import {
     clearListOfPlayers,
     getChatContainer,
@@ -266,6 +267,8 @@ export function wsOnClose() {
 
     getChatContainer().setAttribute("hidden", "");
     getListOfChatsContainer().innerHTML = "";
+
+    chatFormListener.disconnect();
 
     showRoom("lobby");
 

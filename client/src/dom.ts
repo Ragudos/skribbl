@@ -1,3 +1,4 @@
+import { chatFormListener } from "./chats";
 import { STATE } from "./state";
 import { ClientToServerEvents, User } from "./types";
 import { turnNumberToArrayOfU8Int } from "./utils";
@@ -24,6 +25,7 @@ export function initializeWaitingRoom() {
 
     getRoomLinkElement().removeAttribute("hidden");
     getListOfPlayersElement().removeAttribute("hidden");
+    chatFormListener.listen();
     showRoom("waiting-room");
 }
 
