@@ -1105,7 +1105,11 @@ async fn on_message(
                     .build()?
                     .send(server_messages);
 
-                if users.iter().all(|user| user.has_guessed) {
+                if users
+                    .iter()
+                    .filter(|user| user.room_id == room_id)
+                    .all(|user| user.has_guessed)
+                {
                     // TODO: Next round
                 }
 
