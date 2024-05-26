@@ -861,26 +861,23 @@ async fn on_timer_reached_zero(
 
     if is_room_in_drawing_state {
         if *current_round == room.max_rounds {
-            room.state = state::RoomState::Finished;
-            users.lock().await.iter_mut().for_each(|user| {
-                if user.room_id == room_id {
-                    user.has_drawn = false;
-                }
-            });
-
-            let _ = events::WebSocketMessageBuilder::default()
-                .r#type(events::WebSocketMessageType::Everyone)
-                .room_id(room_id.to_string())
-                .message(ws::Message::Binary(
-                    events::ServerToClientEvents::EndGame.try_into()?,
-                ))
-                .build()?
-                .send(server_messages);
+            match end_game(room_id, server_messages, room, &mut users.lock().await) {
+                Err(err) => eprintln!("{:?}", err),
+                _ => {}
+            };
 
             return Ok(false);
         }
 
         let mut users = users.lock().await;
+
+        users
+            .iter_mut()
+            .filter(|user| user.room_id == room_id)
+            .for_each(|user| {
+                user.has_guessed = false;
+            });
+
         let Some(user_left_to_draw) = users
             .iter_mut()
             .find(|user| user.room_id == room_id && !user.has_drawn)
@@ -895,7 +892,6 @@ async fn on_timer_reached_zero(
             });
 
             let length_of_users_in_room = users_in_room.len();
-
             let user_to_draw = &mut *users_in_room
                 [rand::thread_rng().gen_range(0..length_of_users_in_room)];
             let words_to_pick = state::WordToDraw::get_three_words();
@@ -1074,6 +1070,7 @@ async fn on_message(
                 }
 
                 user.has_guessed = true;
+                user.score += 10;
                 // TODO: Add a scoring system. For now, we add +10
 
                 let _ = events::WebSocketMessageBuilder::default()
@@ -1105,12 +1102,43 @@ async fn on_message(
                     .build()?
                     .send(server_messages);
 
+                let _ = events::WebSocketMessageBuilder::default()
+                    .r#type(events::WebSocketMessageType::User {
+                        receiver_id: user_id.to_string(),
+                    })
+                    .room_id(room_id.to_string())
+                    .message(ws::Message::Binary(
+                        events::ServerToClientEvents::SystemMessage {
+                            message: format!(
+                                "{} has guessed the word!",
+                                user.display_name.clone()
+                            ),
+                        }
+                        .try_into()?,
+                    ))
+                    .build()?
+                    .send(server_messages);
+
                 if users
                     .iter()
                     .filter(|user| user.room_id == room_id)
                     .all(|user| user.has_guessed)
                 {
-                    // TODO: Next round
+                    if *current_round == room.max_rounds {
+                        return end_game(room_id, server_messages, room, &mut users);
+                    }
+
+                    users
+                        .iter_mut()
+                        .filter(|user| user.room_id == room_id)
+                        .for_each(|user| {
+                            user.has_guessed = false;
+                            user.has_drawn = false;
+                        });
+
+                    *current_round += 1;
+
+                    // TODO: Handle next round logic
                 }
 
                 return Ok(WebSocketOperationResult::Continue);
@@ -1125,6 +1153,35 @@ async fn on_message(
         .room_id(room_id.to_string())
         .message(ws::Message::Binary(
             events::ServerToClientEvents::Message { message }.try_into()?,
+        ))
+        .build()?
+        .send(server_messages);
+
+    Ok(WebSocketOperationResult::Continue)
+}
+
+fn end_game(
+    room_id: &str,
+    server_messages: &tokio::sync::broadcast::Sender<events::WebSocketMessage>,
+    room: &mut state::Room,
+    users: &mut [state::User],
+) -> Result<WebSocketOperationResult, Box<dyn std::error::Error>> {
+    room.state = state::RoomState::Finished;
+
+    users
+        .iter_mut()
+        .filter(|user| user.room_id == room_id)
+        .for_each(|user| {
+            user.has_drawn = false;
+            user.has_guessed = false;
+            user.score = 0;
+        });
+
+    let _ = events::WebSocketMessageBuilder::default()
+        .r#type(events::WebSocketMessageType::Everyone)
+        .room_id(room_id.to_string())
+        .message(ws::Message::Binary(
+            events::ServerToClientEvents::EndGame.try_into()?,
         ))
         .build()?
         .send(server_messages);
