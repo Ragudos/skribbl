@@ -39,7 +39,6 @@ pub enum ClientToServerEvents {
     PointerLeave,
     ChangeColor { color: String },
     Message { message: String },
-    FinishedDrawing,
 }
 
 impl TryFrom<&Vec<u8>> for ClientToServerEvents {
@@ -167,7 +166,6 @@ impl TryFrom<&Vec<u8>> for ClientToServerEvents {
 
                 Ok(Self::Message { message })
             }
-            8 => Ok(Self::FinishedDrawing),
             _ => Err("Invalid event type".into()),
         }
     }
@@ -221,13 +219,13 @@ pub enum ServerToClientEvents {
         users_in_room: Vec<state::User>,
     },
     Message {
+        user_id: String,
         message: String,
     },
     AddScore {
         user_id: String,
         score: u16,
     },
-    FinishedDrawing,
     Tick {
         time_left: u8,
     },
@@ -462,8 +460,33 @@ impl TryFrom<ServerToClientEvents> for Vec<u8> {
                     ).as_slice()
                 ])
             }
-            ServerToClientEvents::Message { message }
-            | ServerToClientEvents::SystemMessage { message } => {
+            ServerToClientEvents::Message { user_id, message } => {
+                let user_id_as_bytes = user_id.as_bytes();
+                let length_of_user_id =
+                    utils::turn_usize_to_vec_of_u8(user_id_as_bytes.len());
+                let length_of_user_id_length_indicator = length_of_user_id.len();
+
+                let message_as_bytes = message.as_bytes();
+                let length_of_message =
+                    utils::turn_usize_to_vec_of_u8(message_as_bytes.len());
+                let length_of_message_length_indicator = length_of_message.len();
+
+                Ok(vec_with_slices!(
+                    utils::consts::BINARY_PROTOCOL_VERSION,
+                    event_as_borrowed.into();
+                    vec_with_slices!(
+                        length_of_user_id_length_indicator.try_into()?;
+                        &length_of_user_id,
+                        user_id_as_bytes
+                    ).as_slice(),
+                    vec_with_slices!(
+                        length_of_message_length_indicator.try_into()?;
+                        &length_of_message,
+                        message_as_bytes
+                    ).as_slice()
+                ))
+            }
+            ServerToClientEvents::SystemMessage { message } => {
                 let message_as_bytes = message.as_bytes();
                 let length_of_message =
                     utils::turn_usize_to_vec_of_u8(message_as_bytes.len());
@@ -502,10 +525,6 @@ impl TryFrom<ServerToClientEvents> for Vec<u8> {
                     ).as_slice()
                 ))
             }
-            ServerToClientEvents::FinishedDrawing => Ok(vec![
-                utils::consts::BINARY_PROTOCOL_VERSION,
-                event_as_borrowed.into(),
-            ]),
             ServerToClientEvents::Tick { time_left } => Ok(vec![
                 utils::consts::BINARY_PROTOCOL_VERSION,
                 event_as_borrowed.into(),
@@ -555,10 +574,9 @@ impl From<&ServerToClientEvents> for u8 {
             ServerToClientEvents::SendGameState { .. } => 17,
             ServerToClientEvents::Message { .. } => 18,
             ServerToClientEvents::AddScore { .. } => 19,
-            ServerToClientEvents::FinishedDrawing => 20,
-            ServerToClientEvents::Tick { .. } => 21,
-            ServerToClientEvents::UserGuessed { .. } => 22,
-            ServerToClientEvents::SystemMessage { .. } => 23,
+            ServerToClientEvents::Tick { .. } => 20,
+            ServerToClientEvents::UserGuessed { .. } => 21,
+            ServerToClientEvents::SystemMessage { .. } => 22,
         }
     }
 }

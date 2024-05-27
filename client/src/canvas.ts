@@ -31,7 +31,7 @@ export const windowPointerUpListenerForCanvas = new WindowListener(
 );
 
 export class Canvas {
-    static DEFAULT_LINE_WIDTH = 2;
+    static DEFAULT_LINE_WIDTH = 5;
     static DEFAULT_LINE_COLOR = "black";
     static DEFAULT_FILL_STYLE = "white";
     static DEFAULT_LINE_CAP: CanvasLineCap = "round";
@@ -65,6 +65,8 @@ export class Canvas {
             this._ctx.canvas.width,
             this._ctx.canvas.height,
         );
+
+        STATE.canvas = null;
     }
 
     drawLine(x: number, y: number) {

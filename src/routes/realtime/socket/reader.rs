@@ -3,10 +3,7 @@ use rocket::tokio;
 use rocket::{futures::StreamExt, tokio::sync::broadcast::error::RecvError};
 
 use crate::state::TickerCommand;
-use crate::{
-    events::{self, ClientToServerEvents},
-    state, utils,
-};
+use crate::{events, state, utils};
 
 enum WebSocketOperationResult {
     Continue,
@@ -190,24 +187,6 @@ pub async fn create_websocket_reader(
                             .build()?
                             .send(server_messages);
                     }
-                    ClientToServerEvents::FinishedDrawing => {
-                        let _ = ticker_msg.send(state::TickerMsg {
-                            room_id: room_id.to_string(),
-                            command: state::TickerCommand::Delete,
-                        });
-
-                        // TODO: Add check if we need to send this by checking if someone is
-                        // drawing.
-                        let _ = events::WebSocketMessageBuilder::default()
-                            .r#type(events::WebSocketMessageType::Everyone)
-                            .room_id(room_id.clone())
-                            .message(ws::Message::Binary(
-                                events::ServerToClientEvents::FinishedDrawing
-                                    .try_into()?,
-                            ))
-                            .build()?
-                            .send(server_messages);
-                    }
                     events::ClientToServerEvents::Message { message } => {
                         match on_message(
                             message,
@@ -215,6 +194,7 @@ pub async fn create_websocket_reader(
                             &user_id,
                             server_messages,
                             game_state,
+                            ticker_msg,
                         )
                         .await?
                         {
@@ -780,52 +760,37 @@ async fn on_tick(
         return Ok(WebSocketOperationResult::Break);
     };
 
-    let time_left_is_zero: bool;
-    let is_room_in_drawing_state: bool;
+    let state::RoomState::Playing { playing_state, .. } = &mut room.state else {
+        return Ok(WebSocketOperationResult::Break);
+    };
 
-    {
-        let state::RoomState::Playing { playing_state, .. } = &mut room.state else {
-            return Ok(WebSocketOperationResult::Break);
-        };
+    let time_left = match playing_state {
+        state::PlayingState::Drawing { time_left, .. } => time_left,
+        state::PlayingState::PickingAWord { time_left, .. } => time_left,
+    };
 
-        let (time_left, is_room_in_draw_state) = match playing_state {
-            state::PlayingState::Drawing { time_left, .. } => (time_left, true),
-            state::PlayingState::PickingAWord { time_left, .. } => (time_left, false),
-        };
-
-        is_room_in_drawing_state = is_room_in_draw_state;
-
-        let _ = server_messages.send(
-            events::WebSocketMessageBuilder::default()
-                .room_id(room_id.to_string())
-                .r#type(events::WebSocketMessageType::Everyone)
-                .message(ws::Message::Binary(
-                    events::ServerToClientEvents::Tick {
-                        time_left: time_left.clone(),
-                    }
-                    .try_into()
-                    .unwrap(),
-                ))
-                .build()
+    let _ = server_messages.send(
+        events::WebSocketMessageBuilder::default()
+            .room_id(room_id.to_string())
+            .r#type(events::WebSocketMessageType::Everyone)
+            .message(ws::Message::Binary(
+                events::ServerToClientEvents::Tick {
+                    time_left: time_left.clone(),
+                }
+                .try_into()
                 .unwrap(),
-        );
+            ))
+            .build()
+            .unwrap(),
+    );
 
-        time_left_is_zero = *time_left == 0;
-
-        if !time_left_is_zero {
-            *time_left -= 1;
-        }
+    if *time_left != 0 {
+        *time_left -= 1;
     }
 
-    if time_left_is_zero {
-        if on_timer_reached_zero(
-            room_id,
-            room,
-            users,
-            server_messages,
-            is_room_in_drawing_state,
-        )
-        .await?
+    if *time_left == 0 {
+        if on_timer_reached_zero(room_id, room, users, server_messages, ticker_msg)
+            .await?
         {
             create_ticker(
                 room_id,
@@ -848,175 +813,73 @@ async fn on_timer_reached_zero(
     room: &mut state::Room,
     users: &std::sync::Arc<rocket::futures::lock::Mutex<Vec<state::User>>>,
     server_messages: &tokio::sync::broadcast::Sender<events::WebSocketMessage>,
-    is_room_in_drawing_state: bool,
+    ticker_msg: &tokio::sync::broadcast::Sender<state::TickerMsg>,
 ) -> Result<bool, Box<dyn ::std::error::Error>> {
     let state::RoomState::Playing {
         playing_state,
-        current_user_id,
         current_round,
+        ..
     } = &mut room.state
     else {
         unreachable!()
     };
 
-    if is_room_in_drawing_state {
-        if *current_round == room.max_rounds {
-            match end_game(room_id, server_messages, room, &mut users.lock().await) {
-                Err(err) => eprintln!("{:?}", err),
-                _ => {}
-            };
+    match *playing_state {
+        state::PlayingState::PickingAWord { .. } => {
+            match start_drawing(room_id, room, server_messages) {
+                Ok(WebSocketOperationResult::Break) => Ok(false),
+                Ok(WebSocketOperationResult::Continue) => Ok(true),
+                Err(err) => {
+                    eprintln!("{:?}", err);
 
-            return Ok(false);
+                    Ok(false)
+                }
+            }
         }
+        state::PlayingState::Drawing { .. } => {
+            if *current_round == room.max_rounds {
+                match end_game(
+                    room_id,
+                    server_messages,
+                    room,
+                    &mut users.lock().await,
+                    ticker_msg,
+                ) {
+                    Err(err) => eprintln!("{:?}", err),
+                    _ => {}
+                };
 
-        let mut users = users.lock().await;
+                return Ok(false);
+            }
 
-        users
-            .iter_mut()
-            .filter(|user| user.room_id == room_id)
-            .for_each(|user| {
-                user.has_guessed = false;
-            });
+            let mut users = users.lock().await;
 
-        let Some(user_left_to_draw) = users
-            .iter_mut()
-            .find(|user| user.room_id == room_id && !user.has_drawn)
-        else {
-            let mut users_in_room = users
-                .iter_mut()
-                .filter(|user| user.room_id == room_id)
-                .collect::<Vec<&mut state::User>>();
+            if users
+                .iter()
+                .any(|user| user.room_id == room_id && !user.has_drawn)
+            {
+                return match next_turn(room_id, server_messages, &mut users, room) {
+                    Ok(WebSocketOperationResult::Break) => Ok(false),
+                    Ok(WebSocketOperationResult::Continue) => Ok(true),
+                    Err(err) => {
+                        eprintln!("{:?}", err);
 
-            users_in_room.iter_mut().for_each(|user| {
-                (*user).has_drawn = false;
-            });
+                        Ok(false)
+                    }
+                };
+            }
 
-            let length_of_users_in_room = users_in_room.len();
-            let user_to_draw = &mut *users_in_room
-                [rand::thread_rng().gen_range(0..length_of_users_in_room)];
-            let words_to_pick = state::WordToDraw::get_three_words();
+            return match next_round(room_id, server_messages, &mut users, room) {
+                Ok(WebSocketOperationResult::Break) => Ok(false),
+                Ok(WebSocketOperationResult::Continue) => Ok(true),
+                Err(err) => {
+                    eprintln!("{:?}", err);
 
-            *current_round += 1;
-            *playing_state = state::PlayingState::PickingAWord {
-                words_to_pick: words_to_pick.clone(),
-                time_left: utils::consts::PICK_WORD_TIME_LIMIT,
+                    Ok(false)
+                }
             };
-            user_to_draw.has_drawn = true;
-            *current_user_id = user_to_draw.id.clone();
-
-            let _ = events::WebSocketMessageBuilder::default()
-                .r#type(events::WebSocketMessageType::Everyone)
-                .room_id(room_id.to_string())
-                .message(ws::Message::Binary(
-                    events::ServerToClientEvents::NewRound {
-                        round: current_round.clone(),
-                    }
-                    .try_into()?,
-                ))
-                .build()?
-                .send(server_messages);
-
-            let _ = events::WebSocketMessageBuilder::default()
-                .r#type(events::WebSocketMessageType::Everyone)
-                .room_id(room_id.to_string())
-                .message(ws::Message::Binary(
-                    events::ServerToClientEvents::NewTurn {
-                        user_id_to_draw: user_to_draw.id.clone(),
-                    }
-                    .try_into()?,
-                ))
-                .build()?
-                .send(server_messages);
-
-            let _ = events::WebSocketMessageBuilder::default()
-                .r#type(events::WebSocketMessageType::User {
-                    receiver_id: user_to_draw.id.clone(),
-                })
-                .room_id(room_id.to_string())
-                .message(ws::Message::Binary(
-                    events::ServerToClientEvents::PickAWord { words_to_pick }
-                        .try_into()?,
-                ))
-                .build()?
-                .send(server_messages);
-
-            return Ok(true);
-        };
-
-        let words_to_pick = state::WordToDraw::get_three_words();
-
-        *playing_state = state::PlayingState::PickingAWord {
-            words_to_pick: words_to_pick.clone(),
-            time_left: utils::consts::PICK_WORD_TIME_LIMIT,
-        };
-        *current_user_id = user_left_to_draw.id.clone();
-        user_left_to_draw.has_drawn = true;
-
-        let _ = events::WebSocketMessageBuilder::default()
-            .r#type(events::WebSocketMessageType::Everyone)
-            .room_id(room_id.to_string())
-            .message(ws::Message::Binary(
-                events::ServerToClientEvents::NewTurn {
-                    user_id_to_draw: user_left_to_draw.id.clone(),
-                }
-                .try_into()?,
-            ))
-            .build()?
-            .send(server_messages);
-
-        let _ = events::WebSocketMessageBuilder::default()
-            .r#type(events::WebSocketMessageType::User {
-                receiver_id: user_left_to_draw.id.clone(),
-            })
-            .room_id(room_id.to_string())
-            .message(ws::Message::Binary(
-                events::ServerToClientEvents::PickAWord { words_to_pick }.try_into()?,
-            ))
-            .build()?
-            .send(server_messages);
-    } else {
-        let word_to_draw = match playing_state {
-            state::PlayingState::Drawing { .. } => unreachable!(),
-            state::PlayingState::PickingAWord { words_to_pick, .. } => words_to_pick
-                [rand::thread_rng().gen_range(0..words_to_pick.len())]
-            .to_string(),
-        };
-
-        *playing_state = state::PlayingState::Drawing {
-            current_word: word_to_draw.clone(),
-            time_left: utils::consts::DRAW_IME_LIMIT,
-        };
-
-        let _ = events::WebSocketMessageBuilder::default()
-            .r#type(events::WebSocketMessageType::User {
-                receiver_id: current_user_id.clone(),
-            })
-            .room_id(room_id.to_string())
-            .message(ws::Message::Binary(
-                events::ServerToClientEvents::NewWord {
-                    word: word_to_draw.clone(),
-                }
-                .try_into()?,
-            ))
-            .build()?
-            .send(server_messages);
-
-        let _ = events::WebSocketMessageBuilder::default()
-            .r#type(events::WebSocketMessageType::Broadcast {
-                sender_id: current_user_id.clone(),
-            })
-            .room_id(room_id.to_string())
-            .message(ws::Message::Binary(
-                events::ServerToClientEvents::NewWord {
-                    word: utils::obfuscate_word(&word_to_draw),
-                }
-                .try_into()?,
-            ))
-            .build()?
-            .send(server_messages);
+        }
     }
-
-    Ok(true)
 }
 
 async fn on_message(
@@ -1027,6 +890,7 @@ async fn on_message(
         tokio::sync::broadcast::Sender<events::WebSocketMessage>,
     >,
     game_state: &rocket::State<state::GameState>,
+    ticker_msg: &rocket::State<tokio::sync::broadcast::Sender<state::TickerMsg>>,
 ) -> Result<WebSocketOperationResult, Box<dyn std::error::Error>> {
     let mut rooms = game_state.rooms.lock().await;
     let Some(room) = rooms.iter_mut().find(|room| room.id == room_id) else {
@@ -1037,87 +901,32 @@ async fn on_message(
 
     if let state::RoomState::Playing {
         playing_state,
-        current_user_id,
         current_round,
+        ..
     } = &mut room.state
     {
         if let state::PlayingState::Drawing { current_word, .. } = playing_state {
             if *current_word == message {
                 let mut users = game_state.users.lock().await;
-                let Some(user) = users.iter_mut().find(|user| user.id == user_id) else {
-                    eprintln!("Received `Message` event but room does not exist");
 
-                    return Ok(WebSocketOperationResult::Break);
-                };
+                {
+                    // We do this (getting the user twice, on here and on `user_guessed`)
+                    // because in the future, `user_guessed` will need to borrow the `users`
+                    // for the scoring system.
+                    let Some(user) = users.iter().find(|user| user.id == user_id) else {
+                        eprintln!("Received `Message` event but user does not exist");
 
-                if user.has_guessed {
-                    let _ = events::WebSocketMessageBuilder::default()
-                        .r#type(events::WebSocketMessageType::User {
-                            receiver_id: user_id.to_string(),
-                        })
-                        .room_id(room_id.to_string())
-                        .message(ws::Message::Binary(
-                            events::ServerToClientEvents::Error {
-                                message: "You cannot expose the word being drawn."
-                                    .to_string(),
-                            }
-                            .try_into()?,
-                        ))
-                        .build()?
-                        .send(server_messages);
+                        return Ok(WebSocketOperationResult::Break);
+                    };
 
-                    return Ok(WebSocketOperationResult::Continue);
+                    if user.has_guessed {
+                        user_already_guessed(room_id, user_id, server_messages)?;
+
+                        return Ok(WebSocketOperationResult::Continue);
+                    }
                 }
 
-                user.has_guessed = true;
-                user.score += 10;
-                // TODO: Add a scoring system. For now, we add +10
-
-                let _ = events::WebSocketMessageBuilder::default()
-                    .r#type(events::WebSocketMessageType::User {
-                        receiver_id: user_id.to_string(),
-                    })
-                    .room_id(room_id.to_string())
-                    .message(ws::Message::Binary(
-                        events::ServerToClientEvents::AddScore {
-                            user_id: user_id.to_string(),
-                            score: 10,
-                        }
-                        .try_into()?,
-                    ))
-                    .build()?
-                    .send(server_messages);
-
-                let _ = events::WebSocketMessageBuilder::default()
-                    .r#type(events::WebSocketMessageType::User {
-                        receiver_id: user_id.to_string(),
-                    })
-                    .room_id(room_id.to_string())
-                    .message(ws::Message::Binary(
-                        events::ServerToClientEvents::UserGuessed {
-                            user_id: user_id.to_string(),
-                        }
-                        .try_into()?,
-                    ))
-                    .build()?
-                    .send(server_messages);
-
-                let _ = events::WebSocketMessageBuilder::default()
-                    .r#type(events::WebSocketMessageType::User {
-                        receiver_id: user_id.to_string(),
-                    })
-                    .room_id(room_id.to_string())
-                    .message(ws::Message::Binary(
-                        events::ServerToClientEvents::SystemMessage {
-                            message: format!(
-                                "{} has guessed the word!",
-                                user.display_name.clone()
-                            ),
-                        }
-                        .try_into()?,
-                    ))
-                    .build()?
-                    .send(server_messages);
+                user_guessed(room_id, user_id, server_messages, &mut users)?;
 
                 if users
                     .iter()
@@ -1125,20 +934,21 @@ async fn on_message(
                     .all(|user| user.has_guessed)
                 {
                     if *current_round == room.max_rounds {
-                        return end_game(room_id, server_messages, room, &mut users);
+                        return end_game(
+                            room_id,
+                            server_messages,
+                            room,
+                            &mut users,
+                            ticker_msg,
+                        );
                     }
 
-                    users
-                        .iter_mut()
-                        .filter(|user| user.room_id == room_id)
-                        .for_each(|user| {
-                            user.has_guessed = false;
-                            user.has_drawn = false;
-                        });
+                    let _ = ticker_msg.send(state::TickerMsg {
+                        room_id: room_id.to_string(),
+                        command: state::TickerCommand::Delete,
+                    });
 
-                    *current_round += 1;
-
-                    // TODO: Handle next round logic
+                    return next_round(room_id, server_messages, &mut users, room);
                 }
 
                 return Ok(WebSocketOperationResult::Continue);
@@ -1146,13 +956,251 @@ async fn on_message(
         }
     }
 
-    // TODO: Add check logic to see if a message is === to word being drawn if
-    // someone is drawing.
     let _ = events::WebSocketMessageBuilder::default()
         .r#type(events::WebSocketMessageType::Everyone)
         .room_id(room_id.to_string())
         .message(ws::Message::Binary(
-            events::ServerToClientEvents::Message { message }.try_into()?,
+            events::ServerToClientEvents::Message {
+                user_id: user_id.to_string(),
+                message,
+            }
+            .try_into()?,
+        ))
+        .build()?
+        .send(server_messages);
+
+    Ok(WebSocketOperationResult::Continue)
+}
+
+fn user_guessed(
+    room_id: &str,
+    user_id: &str,
+    server_messages: &tokio::sync::broadcast::Sender<events::WebSocketMessage>,
+    users: &mut [state::User],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(user) = users.iter_mut().find(|user| user.id == user_id) else {
+        panic!("Calling `user_guessed` but user does not exist");
+    };
+
+    user.has_guessed = true;
+    user.score += 10;
+    // TODO: Add a scoring system. For now, we add +10
+
+    let _ = events::WebSocketMessageBuilder::default()
+        .r#type(events::WebSocketMessageType::User {
+            receiver_id: user_id.to_string(),
+        })
+        .room_id(room_id.to_string())
+        .message(ws::Message::Binary(
+            events::ServerToClientEvents::AddScore {
+                user_id: user_id.to_string(),
+                score: 10,
+            }
+            .try_into()?,
+        ))
+        .build()?
+        .send(server_messages);
+
+    let _ = events::WebSocketMessageBuilder::default()
+        .r#type(events::WebSocketMessageType::User {
+            receiver_id: user_id.to_string(),
+        })
+        .room_id(room_id.to_string())
+        .message(ws::Message::Binary(
+            events::ServerToClientEvents::UserGuessed {
+                user_id: user_id.to_string(),
+            }
+            .try_into()?,
+        ))
+        .build()?
+        .send(server_messages);
+
+    let _ = events::WebSocketMessageBuilder::default()
+        .r#type(events::WebSocketMessageType::User {
+            receiver_id: user_id.to_string(),
+        })
+        .room_id(room_id.to_string())
+        .message(ws::Message::Binary(
+            events::ServerToClientEvents::SystemMessage {
+                message: format!("{} has guessed the word!", user.display_name.clone()),
+            }
+            .try_into()?,
+        ))
+        .build()?
+        .send(server_messages);
+
+    Ok(())
+}
+
+fn user_already_guessed(
+    room_id: &str,
+    user_id: &str,
+    server_messages: &tokio::sync::broadcast::Sender<events::WebSocketMessage>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let _ = events::WebSocketMessageBuilder::default()
+        .r#type(events::WebSocketMessageType::User {
+            receiver_id: user_id.to_string(),
+        })
+        .room_id(room_id.to_string())
+        .message(ws::Message::Binary(
+            events::ServerToClientEvents::Error {
+                message: "You cannot expose the word being drawn.".to_string(),
+            }
+            .try_into()?,
+        ))
+        .build()?
+        .send(server_messages);
+
+    Ok(())
+}
+
+fn start_drawing(
+    room_id: &str,
+    room: &mut state::Room,
+    server_messages: &tokio::sync::broadcast::Sender<events::WebSocketMessage>,
+) -> Result<WebSocketOperationResult, Box<dyn std::error::Error>> {
+    let state::RoomState::Playing {
+        playing_state,
+        current_user_id,
+        ..
+    } = &mut room.state
+    else {
+        panic!("Calling `start_drawing` but room is not in playing state.");
+    };
+
+    let word_to_draw = match playing_state {
+        state::PlayingState::Drawing { .. } => panic!(
+            "Calling `start_drawing` but room is already in a drawing playing state."
+        ),
+        state::PlayingState::PickingAWord { words_to_pick, .. } => words_to_pick
+            [rand::thread_rng().gen_range(0..words_to_pick.len())]
+        .to_string(),
+    };
+
+    *playing_state = state::PlayingState::Drawing {
+        current_word: word_to_draw.clone(),
+        time_left: utils::consts::DRAW_IME_LIMIT,
+    };
+
+    let _ = events::WebSocketMessageBuilder::default()
+        .r#type(events::WebSocketMessageType::User {
+            receiver_id: current_user_id.clone(),
+        })
+        .room_id(room_id.to_string())
+        .message(ws::Message::Binary(
+            events::ServerToClientEvents::NewWord {
+                word: word_to_draw.clone(),
+            }
+            .try_into()?,
+        ))
+        .build()?
+        .send(server_messages);
+
+    let _ = events::WebSocketMessageBuilder::default()
+        .r#type(events::WebSocketMessageType::Broadcast {
+            sender_id: current_user_id.clone(),
+        })
+        .room_id(room_id.to_string())
+        .message(ws::Message::Binary(
+            events::ServerToClientEvents::NewWord {
+                word: utils::obfuscate_word(&word_to_draw),
+            }
+            .try_into()?,
+        ))
+        .build()?
+        .send(server_messages);
+
+    Ok(WebSocketOperationResult::Continue)
+}
+
+fn next_round(
+    room_id: &str,
+    server_messages: &tokio::sync::broadcast::Sender<events::WebSocketMessage>,
+    users: &mut [state::User],
+    room: &mut state::Room,
+) -> Result<WebSocketOperationResult, Box<dyn std::error::Error>> {
+    let state::RoomState::Playing { current_round, .. } = &mut room.state else {
+        panic!("Called `next_round` despite room not in playing state");
+    };
+
+    assert_eq!(users.iter().any(|user| user.room_id == room_id && !user.has_drawn), false, "Allow a call to `next_round` if all users in a room has drawn for the current round.");
+    assert_ne!(*current_round, room.max_rounds, "Allow a call to `next_round` if the current round has not reached the maximum round set in a room");
+
+    *current_round += 1;
+
+    let _ = events::WebSocketMessageBuilder::default()
+        .r#type(events::WebSocketMessageType::Everyone)
+        .room_id(room_id.to_string())
+        .message(ws::Message::Binary(
+            events::ServerToClientEvents::NewRound {
+                round: current_round.clone(),
+            }
+            .try_into()?,
+        ))
+        .build()?
+        .send(server_messages);
+
+    next_turn(room_id, server_messages, users, room)
+}
+
+fn next_turn(
+    room_id: &str,
+    server_messages: &tokio::sync::broadcast::Sender<events::WebSocketMessage>,
+    users: &mut [state::User],
+    room: &mut state::Room,
+) -> Result<WebSocketOperationResult, Box<dyn std::error::Error>> {
+    let state::RoomState::Playing {
+        playing_state,
+        current_user_id,
+        ..
+    } = &mut room.state
+    else {
+        panic!("Calling `next_turn` despite room not in playing state.");
+    };
+
+    let mut users_in_room = users
+        .iter_mut()
+        .filter(|user| user.room_id == room_id)
+        .collect::<Vec<&mut state::User>>();
+
+    users_in_room.iter_mut().for_each(|user| {
+        if user.room_id == room_id {
+            (*user).has_drawn = false;
+            (*user).has_guessed = false;
+        }
+    });
+
+    let users_in_room_length = users_in_room.len();
+    let user_to_draw =
+        &mut *users_in_room[rand::thread_rng().gen_range(0..users_in_room_length)];
+    let words_to_pick = state::WordToDraw::get_three_words();
+
+    *playing_state = state::PlayingState::PickingAWord {
+        words_to_pick: words_to_pick.clone(),
+        time_left: utils::consts::PICK_WORD_TIME_LIMIT,
+    };
+    user_to_draw.has_drawn = true;
+    *current_user_id = user_to_draw.id.clone();
+
+    let _ = events::WebSocketMessageBuilder::default()
+        .r#type(events::WebSocketMessageType::Everyone)
+        .room_id(room_id.to_string())
+        .message(ws::Message::Binary(
+            events::ServerToClientEvents::NewTurn {
+                user_id_to_draw: user_to_draw.id.clone(),
+            }
+            .try_into()?,
+        ))
+        .build()?
+        .send(server_messages);
+
+    let _ = events::WebSocketMessageBuilder::default()
+        .r#type(events::WebSocketMessageType::User {
+            receiver_id: user_to_draw.id.clone(),
+        })
+        .room_id(room_id.to_string())
+        .message(ws::Message::Binary(
+            events::ServerToClientEvents::PickAWord { words_to_pick }.try_into()?,
         ))
         .build()?
         .send(server_messages);
@@ -1165,7 +1213,13 @@ fn end_game(
     server_messages: &tokio::sync::broadcast::Sender<events::WebSocketMessage>,
     room: &mut state::Room,
     users: &mut [state::User],
+    ticker_msg: &tokio::sync::broadcast::Sender<state::TickerMsg>,
 ) -> Result<WebSocketOperationResult, Box<dyn std::error::Error>> {
+    let _ = ticker_msg.send(state::TickerMsg {
+        room_id: room_id.to_string(),
+        command: state::TickerCommand::Delete,
+    });
+
     room.state = state::RoomState::Finished;
 
     users

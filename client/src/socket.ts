@@ -24,7 +24,6 @@ import {
     handleConnectError,
     handleEndGame,
     handleError,
-    handleFinishedDrawing,
     handleNewHost,
     handleNewRound,
     handleNewTurn,
@@ -38,7 +37,9 @@ import {
     handleSendGameState,
     handleSendMessage,
     handleStartGame,
+    handleSystemMessage,
     handleTick,
+    handleUserGuessed,
     handleUserJoined,
     handleUserLeft,
 } from "./events";
@@ -194,11 +195,14 @@ export function wsOnMessage(e: MessageEvent) {
             case ServerToClientEvents.AddScore:
                 handleAddScore(data);
                 break;
-            case ServerToClientEvents.FinishedDrawing:
-                handleFinishedDrawing(data);
-                break;
             case ServerToClientEvents.Tick:
                 handleTick(data);
+                break;
+            case ServerToClientEvents.UserGuessed:
+                handleUserGuessed(data);
+                break;
+            case ServerToClientEvents.SystemMessage:
+                handleSystemMessage(data);
                 break;
             default:
                 throw new Error("Received invalid event from server.");

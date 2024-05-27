@@ -1,3 +1,4 @@
+import { getChatForm } from "./dom";
 import { toast } from "./lib/toast";
 import { HTMLElementListener } from "./listener";
 import { STATE } from "./state";
@@ -50,4 +51,6 @@ export function onChatSubmit(e: SubmitEvent) {
             ...chatMessageBinary,
         ]),
     );
+
+    getChatForm().querySelector("input")!.value = "";
 }

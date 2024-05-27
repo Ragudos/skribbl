@@ -111,6 +111,7 @@ export enum ServerToClientEvents {
     SendGameState = 17,
     SendMessage = 18,
     AddScore = 19,
-    FinishedDrawing = 20,
-    Tick = 21,
+    Tick = 20,
+    UserGuessed = 21,
+    SystemMessage = 22,
 }

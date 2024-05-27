@@ -262,14 +262,17 @@ pub async fn ws_endpoint<'st>(
                     let writer = writer::create_websocket_writer(
                         room_id.clone(),
                         user_id.clone(),
-                        game_state,
                         sink.clone(),
                         server_messages
                     );
 
                     tokio::select! {
-                        _ = reader => {}
-                        _ = writer => {}
+                        _ = reader => {
+                            println!("WebSocket reader closed");
+                        }
+                        _ = writer => {
+                            println!("WebSocket writer closed");
+                        }
                     }
 
                     println!("WebSocket connection closed");

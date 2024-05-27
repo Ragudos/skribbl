@@ -1,11 +1,10 @@
 use rocket::futures::SinkExt;
 
-use crate::{events, state};
+use crate::events;
 
 pub async fn create_websocket_writer(
     room_id: String,
     user_id: String,
-    game_state: &rocket::State<state::GameState>,
     sink: std::sync::Arc<
         rocket::futures::lock::Mutex<
             rocket::futures::stream::SplitSink<ws::stream::DuplexStream, ws::Message>,

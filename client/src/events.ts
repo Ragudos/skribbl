@@ -8,7 +8,9 @@ import {
 import {
     addUserToListOfPlayersElement,
     getDrawingCanvas,
+    getListOfChatsContainer,
     getListOfPlayersElement,
+    getTimeLeftEl,
     getWordList,
     getWordToDrawEl,
     onWordListBtnClick,
@@ -147,6 +149,12 @@ export function handlePickAWord(data: Array<number>) {
         return;
     }
 
+    STATE.canvas?.destroy();
+    canvasPointerDownListener.disconnect();
+    canvasPointerLeaveListener.disconnect();
+    canvasPointerMoveListener.disconnect();
+    windowPointerUpListenerForCanvas.disconnect();
+
     const stringifiedWords = parsePartOfBinaryData(data, "string");
     const words = JSON.parse(stringifiedWords);
 
@@ -260,6 +268,14 @@ export function handleNewTurn(data: Array<number>) {
         );
         return;
     }
+
+    STATE.canvas?.destroy();
+    canvasPointerDownListener.disconnect();
+    canvasPointerLeaveListener.disconnect();
+    canvasPointerMoveListener.disconnect();
+    windowPointerUpListenerForCanvas.disconnect();
+
+    getWordToDrawEl().textContent = "";
 
     const userId = parsePartOfBinaryData(data, "string");
 
@@ -387,14 +403,55 @@ export function handleSendGameState(data: Array<number>) {
     STATE.usersInRoom = usersInRoom;
 }
 
-export function handleSendMessage(data: Array<number>) {}
+export function handleSendMessage(data: Array<number>) {
+    if (!STATE.room || !STATE.user || STATE.usersInRoom.length === 0) {
+        throw new Error();
+    }
+
+    const senderId = parsePartOfBinaryData(data, "string");
+    const message = parsePartOfBinaryData(data, "string");
+    const sender = STATE.usersInRoom.find((user) => {
+        return user.id == senderId;
+    });
+
+    if (!sender) {
+        throw new Error();
+    }
+
+    const li = document.createElement("li");
+    const name = document.createElement("div");
+
+    name.textContent = sender.displayName + ": ";
+    name.classList.add("name");
+
+    li.appendChild(name);
+
+    const messageEl = document.createElement("p");
+
+    messageEl.textContent = message;
+    li.appendChild(messageEl);
+
+    getListOfChatsContainer().appendChild(li);
+
+    li.scrollIntoView();
+}
 
 export function handleAddScore(data: Array<number>) {}
 
-export function handleFinishedDrawing(_data: Array<number>) {}
-
 export function handleTick(data: Array<number>) {
+    if (
+        !STATE.room ||
+        STATE.room.state === "waiting" ||
+        STATE.room.state === "finished"
+    ) {
+        throw new Error();
+    }
+
     const timeLeft = parsePartOfBinaryData(data, "int8");
 
-    console.log(timeLeft);
+    getTimeLeftEl().textContent = timeLeft + "s";
 }
+
+export function handleUserGuessed(data: Array<number>) {}
+
+export function handleSystemMessage(data: Array<number>) {}

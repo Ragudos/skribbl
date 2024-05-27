@@ -12,15 +12,6 @@
 			<h1>Skribbl requires JavaScript to run.</h1>
 		</noscript>
 		<div id="app">
-			<div id="room-link" hidden>
-				<div>
-					Share this link with your friends to invite them to this room:
-					<input type="text" id="room-link-input" readonly />
-					<button type="button" data-copy-btn="room-link-input">
-						Copy
-					</button>
-				</div>
-			</div>
 			<div class="main-container">
 				<ul id="list-of-players" hidden></ul>
 				<div class="rooms" id="lobby" data-current="true">
@@ -108,6 +99,15 @@
 							</svg>
 						</button>
 					</form>
+				</div>
+			</div>
+			<div id="room-link" hidden>
+				<div>
+					Share this link with your friends to invite them to this room:
+					<input type="text" id="room-link-input" readonly />
+					<button type="button" data-copy-btn="room-link-input">
+						Copy
+					</button>
 				</div>
 			</div>
 		</div>
