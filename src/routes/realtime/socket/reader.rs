@@ -902,11 +902,30 @@ async fn on_message(
     if let state::RoomState::Playing {
         playing_state,
         current_round,
-        ..
+        current_user_id,
     } = &mut room.state
     {
         if let state::PlayingState::Drawing { current_word, .. } = playing_state {
             if *current_word == message {
+                if user_id == &*current_user_id {
+                    let _ = events::WebSocketMessageBuilder::default()
+                        .r#type(events::WebSocketMessageType::User {
+                            receiver_id: user_id.to_string(),
+                        })
+                        .room_id(room_id.to_string())
+                        .message(ws::Message::Binary(
+                            events::ServerToClientEvents::Error {
+                                message: "You cannot expose the word being drawn"
+                                    .to_string(),
+                            }
+                            .try_into()?,
+                        ))
+                        .build()?
+                        .send(server_messages);
+
+                    return Ok(WebSocketOperationResult::Continue);
+                }
+
                 let mut users = game_state.users.lock().await;
 
                 {
@@ -928,11 +947,18 @@ async fn on_message(
 
                 user_guessed(room_id, user_id, server_messages, &mut users)?;
 
-                if users
-                    .iter()
-                    .filter(|user| user.room_id == room_id)
-                    .all(|user| user.has_guessed)
-                {
+                let _ = ticker_msg.send(state::TickerMsg {
+                    room_id: room_id.to_string(),
+                    command: state::TickerCommand::Delete,
+                });
+
+                if !users.iter().any(|user| {
+                    if current_user_id == &(*user).id {
+                        return false;
+                    }
+
+                    return user.room_id == room_id && !user.has_guessed;
+                }) {
                     if *current_round == room.max_rounds {
                         return end_game(
                             room_id,
@@ -943,12 +969,34 @@ async fn on_message(
                         );
                     }
 
-                    let _ = ticker_msg.send(state::TickerMsg {
-                        room_id: room_id.to_string(),
-                        command: state::TickerCommand::Delete,
-                    });
+                    if users
+                        .iter()
+                        .any(|user| user.room_id == room_id && !user.has_drawn)
+                    {
+                        let res = next_turn(room_id, server_messages, &mut users, room);
 
-                    return next_round(room_id, server_messages, &mut users, room);
+                        create_ticker(
+                            room_id,
+                            game_state.rooms.clone(),
+                            game_state.users.clone(),
+                            server_messages.inner().clone(),
+                            ticker_msg.inner().clone(),
+                        );
+
+                        return res;
+                    }
+
+                    let res = next_round(room_id, server_messages, &mut users, room);
+
+                    create_ticker(
+                        room_id,
+                        game_state.rooms.clone(),
+                        game_state.users.clone(),
+                        server_messages.inner().clone(),
+                        ticker_msg.inner().clone(),
+                    );
+
+                    return res;
                 }
 
                 return Ok(WebSocketOperationResult::Continue);
@@ -1126,6 +1174,12 @@ fn next_round(
     assert_eq!(users.iter().any(|user| user.room_id == room_id && !user.has_drawn), false, "Allow a call to `next_round` if all users in a room has drawn for the current round.");
     assert_ne!(*current_round, room.max_rounds, "Allow a call to `next_round` if the current round has not reached the maximum round set in a room");
 
+    users.iter_mut().for_each(|user| {
+        if user.room_id == room_id {
+            (*user).has_drawn = false;
+        }
+    });
+
     *current_round += 1;
 
     let _ = events::WebSocketMessageBuilder::default()
@@ -1149,6 +1203,8 @@ fn next_turn(
     users: &mut [state::User],
     room: &mut state::Room,
 ) -> Result<WebSocketOperationResult, Box<dyn std::error::Error>> {
+    println!("{:?}", room);
+
     let state::RoomState::Playing {
         playing_state,
         current_user_id,
@@ -1158,21 +1214,20 @@ fn next_turn(
         panic!("Calling `next_turn` despite room not in playing state.");
     };
 
-    let mut users_in_room = users
-        .iter_mut()
-        .filter(|user| user.room_id == room_id)
-        .collect::<Vec<&mut state::User>>();
-
-    users_in_room.iter_mut().for_each(|user| {
+    users.iter_mut().for_each(|user| {
         if user.room_id == room_id {
-            (*user).has_drawn = false;
             (*user).has_guessed = false;
         }
     });
 
-    let users_in_room_length = users_in_room.len();
-    let user_to_draw =
-        &mut *users_in_room[rand::thread_rng().gen_range(0..users_in_room_length)];
+    let mut users_in_room_who_has_not_drawn = users
+        .iter_mut()
+        .filter(|user| user.room_id == room_id && !user.has_drawn)
+        .collect::<Vec<&mut state::User>>();
+
+    let users_in_room_who_has_not_drawn_length = users_in_room_who_has_not_drawn.len();
+    let user_to_draw = &mut *users_in_room_who_has_not_drawn
+        [rand::thread_rng().gen_range(0..users_in_room_who_has_not_drawn_length)];
     let words_to_pick = state::WordToDraw::get_three_words();
 
     *playing_state = state::PlayingState::PickingAWord {

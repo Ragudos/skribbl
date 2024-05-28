@@ -130,7 +130,7 @@ ol:not([role="list"]) {
 @media screen and (min-width: 1246px) {
     .main-container:has(#chat:not([hidden])):has(#list-of-players:not([hidden])):has(#lobby:not([hidden])) {
         grid-template-areas: "players room chat";
-        grid-template-columns: auto 1fr auto;
+        grid-template-columns: 1fr 2fr 1fr;
     }
 }
 
