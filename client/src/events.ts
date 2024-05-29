@@ -212,7 +212,41 @@ function parseAsTupleOfThreeStrings(
     });
 }
 
-export function handleEndGame(data: Array<number>) {}
+export function handleEndGame(_data: Array<number>) {
+    if (STATE.socket.connectionState !== "connected") {
+        return;
+    }
+
+    if (!STATE.room) {
+        throw new Error(
+            "Received event `endGame` despite room state being empty.",
+        );
+    }
+
+    if (STATE.room.state === "waiting" || STATE.room.state === "finished") {
+        throw new Error("");
+    }
+
+    canvasPointerDownListener.disconnect();
+    canvasPointerMoveListener.disconnect();
+    windowPointerUpListenerForCanvas.disconnect();
+    canvasPointerLeaveListener.disconnect();
+    STATE.canvas?.destroy();
+    STATE.canvas = null;
+
+    getListOfPlayersElement()
+        .querySelectorAll("li")
+        .forEach((li) => {
+            li.removeAttribute("data-guessed");
+        });
+
+    getWordToDrawEl().textContent = "";
+    getTimeLeftEl().textContent = "";
+
+    STATE.room.state = "finished";
+
+    showRoom("finished-room");
+}
 
 export function handleResetRoom(_data: Array<number>) {
     if (STATE.socket.connectionState !== "connected") {
@@ -274,6 +308,12 @@ export function handleNewTurn(data: Array<number>) {
     canvasPointerLeaveListener.disconnect();
     canvasPointerMoveListener.disconnect();
     windowPointerUpListenerForCanvas.disconnect();
+
+    getListOfPlayersElement()
+        .querySelectorAll("li")
+        .forEach((li) => {
+            li.removeAttribute("data-guessed");
+        });
 
     getWordToDrawEl().textContent = "";
 
@@ -433,10 +473,8 @@ export function handleSendMessage(data: Array<number>) {
 
     getListOfChatsContainer().appendChild(li);
 
-    li.scrollIntoView();
+    li.scrollIntoView({ behavior: "smooth", block: "end" });
 }
-
-export function handleAddScore(data: Array<number>) {}
 
 export function handleTick(data: Array<number>) {
     if (
@@ -452,6 +490,78 @@ export function handleTick(data: Array<number>) {
     getTimeLeftEl().textContent = timeLeft + "s";
 }
 
-export function handleUserGuessed(data: Array<number>) {}
+export function handleAddScore(data: Array<number>) {
+    if (STATE.socket.connectionState !== "connected") {
+        throw new Error();
+    }
 
-export function handleSystemMessage(data: Array<number>) {}
+    if (
+        !STATE.room ||
+        STATE.room.state === "waiting" ||
+        STATE.room.state === "finished" ||
+        !STATE.user ||
+        STATE.usersInRoom.length === 0
+    ) {
+        throw new Error();
+    }
+
+    const userId = parsePartOfBinaryData(data, "string");
+    const score = parsePartOfBinaryData(data, "int16");
+}
+
+export function handleUserGuessed(data: Array<number>) {
+    if (STATE.socket.connectionState !== "connected") {
+        throw new Error();
+    }
+
+    if (
+        !STATE.room ||
+        STATE.room.state === "waiting" ||
+        STATE.room.state === "finished" ||
+        !STATE.user ||
+        STATE.usersInRoom.length === 0
+    ) {
+        throw new Error();
+    }
+
+    const userId = parsePartOfBinaryData(data, "string");
+    const userEl = document.getElementById(`user-${userId}`)!;
+
+    userEl.setAttribute("data-guessed", "true");
+}
+
+export function handleSystemMessage(data: Array<number>) {
+    if (STATE.socket.connectionState !== "connected") {
+        throw new Error();
+    }
+
+    if (
+        !STATE.room ||
+        STATE.room.state === "waiting" ||
+        STATE.room.state === "finished" ||
+        !STATE.user ||
+        STATE.usersInRoom.length === 0
+    ) {
+        throw new Error();
+    }
+
+    const message = parsePartOfBinaryData(data, "string");
+
+    const li = document.createElement("li");
+    const messageEl = document.createElement("div");
+
+    li.setAttribute("data-message", "system");
+    messageEl.textContent = message;
+
+    li.appendChild(messageEl);
+
+    getListOfChatsContainer().appendChild(li);
+
+    li.scrollIntoView({ behavior: "smooth", block: "end" });
+}
+
+export function handleRevealWord(data: Array<number>) {
+    const word = parsePartOfBinaryData(data, "string");
+
+    getWordToDrawEl().textContent = word;
+}

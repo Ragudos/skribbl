@@ -5,6 +5,69 @@
     --padding-inline: 1rem;
 }
 
+sub,
+sup {
+    font-size: 75%;
+    line-height: 0;
+    position: relative;
+    vertical-align: baseline;
+}
+
+sub {
+    bottom: -0.25em;
+}
+
+sup {
+    top: -0.5em;
+}
+
+img {
+    border-style: none;
+}
+
+button,
+input,
+optgroup,
+select,
+textarea {
+    font-family: inherit;
+    font-size: 100%;
+    line-height: 1.15;
+    margin: 0;
+}
+
+button,
+input {
+    overflow: visible;
+}
+
+button,
+select {
+    text-transform: none;
+}
+
+button,
+[type="button"],
+[type="reset"],
+[type="submit"] {
+    -webkit-appearance: button;
+}
+
+button::-moz-focus-inner,
+[type="button"]::-moz-focus-inner,
+[type="reset"]::-moz-focus-inner,
+[type="submit"]::-moz-focus-inner {
+    border-style: none;
+    padding: 0;
+}
+
+button:-moz-focusring,
+[type="button"]:-moz-focusring,
+[type="reset"]:-moz-focusring,
+[type="submit"]:-moz-focusring {
+    outline: 1px dotted ButtonText;
+}
+
 *,
 ::before,
 ::after {
@@ -112,7 +175,7 @@ ol:not([role="list"]) {
     --_padding: 0.75rem;
 
     display: grid;
-    place-items: center;
+    justify-items: center;
 
     width: 100%;
 
@@ -121,17 +184,21 @@ ol:not([role="list"]) {
     grid-template-areas: "players" "room" "chat";
 }
 
-@media screen and (min-width: 768px) {
+@media screen and (min-width: 640px) {
     .main-container:has(#chat:not([hidden])):has(#list-of-players:not([hidden])):has(#lobby:not([hidden])) {
         grid-template-areas: "room room room" "players chat chat";
     }
 }
 
-@media screen and (min-width: 1246px) {
+@media screen and (min-width: 1024px) {
     .main-container:has(#chat:not([hidden])):has(#list-of-players:not([hidden])):has(#lobby:not([hidden])) {
         grid-template-areas: "players room chat";
         grid-template-columns: 1fr 2fr 1fr;
     }
+}
+
+.main-container > * {
+    width: 100%;
 }
 
 .rooms {
@@ -236,8 +303,29 @@ ol:not([role="list"]) {
     padding-block: calc(var(--_padding) / 2);
 
     display: flex;
+    justify-content: space-between;
+    align-items: center;
 
     padding-inline: var(--_padding);
+
+    width: 100%;
+}
+
+#list-of-players > li[data-guessed] {
+    background-color: hsl(107 69% 78%);
+}
+
+.user-metadata {
+    display: flex;
+    align-items: center;
+}
+
+.badge {
+    margin-left: 0.125rem;
+}
+
+[data-host-badge] {
+    margin-left: 0.25rem;
 }
 
 #list-of-players > li:first-child {
@@ -316,8 +404,6 @@ button:disabled {
 }
 
 #playing-room {
-    aspect-ratio: 16 / 9;
-
     width: min(100%, 1280px);
 
     display: flex;

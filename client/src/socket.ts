@@ -34,6 +34,7 @@ import {
     handlePointerMove,
     handlePointerUp,
     handleResetRoom,
+    handleRevealWord,
     handleSendGameState,
     handleSendMessage,
     handleStartGame,
@@ -203,6 +204,9 @@ export function wsOnMessage(e: MessageEvent) {
                 break;
             case ServerToClientEvents.SystemMessage:
                 handleSystemMessage(data);
+                break;
+            case ServerToClientEvents.RevealWord:
+                handleRevealWord(data);
                 break;
             default:
                 throw new Error("Received invalid event from server.");

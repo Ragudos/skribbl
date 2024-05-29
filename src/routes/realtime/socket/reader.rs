@@ -386,6 +386,12 @@ fn handle_playing_room(
         _ => unreachable!(),
     };
 
+    users.iter_mut().for_each(|user| {
+        if user.room_id == room_id {
+            user.has_guessed = false;
+        }
+    });
+
     if amount_of_users_who_has_not_drawn == 0 && is_in_last_round {
         room.state = state::RoomState::Finished;
 
@@ -945,12 +951,13 @@ async fn on_message(
                     }
                 }
 
-                user_guessed(room_id, user_id, server_messages, &mut users)?;
-
-                let _ = ticker_msg.send(state::TickerMsg {
-                    room_id: room_id.to_string(),
-                    command: state::TickerCommand::Delete,
-                });
+                user_guessed(
+                    room_id,
+                    user_id,
+                    &current_word,
+                    server_messages,
+                    &mut users,
+                )?;
 
                 if !users.iter().any(|user| {
                     if current_user_id == &(*user).id {
@@ -968,6 +975,11 @@ async fn on_message(
                             ticker_msg,
                         );
                     }
+
+                    let _ = ticker_msg.send(state::TickerMsg {
+                        room_id: room_id.to_string(),
+                        command: state::TickerCommand::Delete,
+                    });
 
                     if users
                         .iter()
@@ -1023,6 +1035,7 @@ async fn on_message(
 fn user_guessed(
     room_id: &str,
     user_id: &str,
+    word_to_draw: &str,
     server_messages: &tokio::sync::broadcast::Sender<events::WebSocketMessage>,
     users: &mut [state::User],
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -1035,9 +1048,7 @@ fn user_guessed(
     // TODO: Add a scoring system. For now, we add +10
 
     let _ = events::WebSocketMessageBuilder::default()
-        .r#type(events::WebSocketMessageType::User {
-            receiver_id: user_id.to_string(),
-        })
+        .r#type(events::WebSocketMessageType::Everyone)
         .room_id(room_id.to_string())
         .message(ws::Message::Binary(
             events::ServerToClientEvents::AddScore {
@@ -1050,13 +1061,23 @@ fn user_guessed(
         .send(server_messages);
 
     let _ = events::WebSocketMessageBuilder::default()
-        .r#type(events::WebSocketMessageType::User {
-            receiver_id: user_id.to_string(),
-        })
+        .r#type(events::WebSocketMessageType::Everyone)
         .room_id(room_id.to_string())
         .message(ws::Message::Binary(
             events::ServerToClientEvents::UserGuessed {
                 user_id: user_id.to_string(),
+            }
+            .try_into()?,
+        ))
+        .build()?
+        .send(server_messages);
+
+    let _ = events::WebSocketMessageBuilder::default()
+        .r#type(events::WebSocketMessageType::Everyone)
+        .room_id(room_id.to_string())
+        .message(ws::Message::Binary(
+            events::ServerToClientEvents::SystemMessage {
+                message: format!("{} has guessed the word!", user.display_name.clone()),
             }
             .try_into()?,
         ))
@@ -1069,8 +1090,8 @@ fn user_guessed(
         })
         .room_id(room_id.to_string())
         .message(ws::Message::Binary(
-            events::ServerToClientEvents::SystemMessage {
-                message: format!("{} has guessed the word!", user.display_name.clone()),
+            events::ServerToClientEvents::RevealWord {
+                word: word_to_draw.to_string(),
             }
             .try_into()?,
         ))

@@ -114,4 +114,5 @@ export enum ServerToClientEvents {
     Tick = 20,
     UserGuessed = 21,
     SystemMessage = 22,
+    RevealWord = 23,
 }

@@ -1,3 +1,4 @@
+import { MAX_CHAT_MSG_LENGTH } from "./consts";
 import { getChatForm } from "./dom";
 import { toast } from "./lib/toast";
 import { HTMLElementListener } from "./listener";
@@ -33,6 +34,15 @@ export function onChatSubmit(e: SubmitEvent) {
 
     if (!chatMessage) {
         toast.error("Please type in a message");
+
+        return;
+    }
+
+    if (chatMessage.toString().length > MAX_CHAT_MSG_LENGTH) {
+        toast.error(
+            MAX_CHAT_MSG_LENGTH +
+                " is the maximum length alllowed for a message.",
+        );
 
         return;
     }

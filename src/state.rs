@@ -134,10 +134,10 @@ pub struct Room {
     pub visibility: Visibility,
     #[builder(default = "RoomState::Waiting")]
     pub state: RoomState,
-    #[builder(default = "8")]
+    #[builder(default = "6")]
     #[serde(rename = "maxUsers")]
     pub max_users: u8,
-    #[builder(default = "4")]
+    #[builder(default = "3")]
     #[serde(rename = "maxRounds")]
     pub max_rounds: u8,
     #[builder(default = "1")]

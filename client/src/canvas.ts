@@ -65,6 +65,11 @@ export class Canvas {
             this._ctx.canvas.width,
             this._ctx.canvas.height,
         );
+        this._ctx.reset();
+        this._ctx.lineCap = Canvas.DEFAULT_LINE_CAP;
+        this._ctx.lineWidth = Canvas.DEFAULT_LINE_WIDTH;
+        this._ctx.strokeStyle = Canvas.DEFAULT_LINE_COLOR;
+        this._ctx.fillStyle = Canvas.DEFAULT_FILL_STYLE;
 
         STATE.canvas = null;
     }

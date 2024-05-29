@@ -1,19 +1,19 @@
 {
-  "name": "skribbl-client",
-  "version": "1.0.0",
-  "main": "index.js",
-  "license": "MIT",
-  "private": true,
-  "scripts": {
-    "build": "node esbuild.config.mjs",
-    "watch": "node esbuild.config.mjs --watch"
-  },
-  "devDependencies": {
-    "esbuild": "^0.20.2",
-    "prettier": "^3.2.5",
-    "typescript": "^5.4.5"
-  },
-  "dependencies": {
-    "toastmynuts": "^2.0.0"
-  }
+    "name": "skribbl-client",
+    "version": "1.0.0",
+    "main": "index.js",
+    "license": "MIT",
+    "private": true,
+    "scripts": {
+        "build": "node esbuild.config.mjs",
+        "watch": "node esbuild.config.mjs --watch"
+    },
+    "devDependencies": {
+        "esbuild": "^0.20.2",
+        "prettier": "^3.2.5",
+        "typescript": "^5.4.5"
+    },
+    "dependencies": {
+        "toastmynuts": "^2.0.0"
+    }
 }

@@ -14,7 +14,7 @@ feather
 shark
 fish
 scoreboard
-surfboard
+Surfboard
 chess
 reindeer
 lion
@@ -32,7 +32,7 @@ speaker
 microphone
 box
 square
-kettle bells
+kettlebell
 coconut
 apple
 banana
@@ -42,7 +42,7 @@ aircon
 inverter
 picture frame
 media literacy
-youtube
+YouTube
 gallery
 seashore
 camera man
@@ -108,3 +108,6 @@ pillow
 cushion
 springboard
 swimming pool
+Scotch Tape
+windmill
+Nuclear missile

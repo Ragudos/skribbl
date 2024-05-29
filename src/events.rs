@@ -235,6 +235,9 @@ pub enum ServerToClientEvents {
     SystemMessage {
         message: String,
     },
+    RevealWord {
+        word: String,
+    },
 }
 
 impl TryFrom<ServerToClientEvents> for Vec<u8> {
@@ -546,6 +549,19 @@ impl TryFrom<ServerToClientEvents> for Vec<u8> {
                     user_id_as_bytes
                 ))
             }
+            ServerToClientEvents::RevealWord { word } => {
+                let word_as_bytes = word.as_bytes();
+                let word_length = utils::turn_usize_to_vec_of_u8(word_as_bytes.len());
+                let length_of_word_length_indicator = word_length.len();
+
+                Ok(vec_with_slices!(
+                    utils::consts::BINARY_PROTOCOL_VERSION,
+                    event_as_borrowed.into(),
+                    length_of_word_length_indicator as u8;
+                    &word_length,
+                    word_as_bytes
+                ))
+            }
         }
     }
 }
@@ -577,6 +593,7 @@ impl From<&ServerToClientEvents> for u8 {
             ServerToClientEvents::Tick { .. } => 20,
             ServerToClientEvents::UserGuessed { .. } => 21,
             ServerToClientEvents::SystemMessage { .. } => 22,
+            ServerToClientEvents::RevealWord { .. } => 23,
         }
     }
 }

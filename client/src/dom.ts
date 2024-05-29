@@ -3,7 +3,9 @@ import { STATE } from "./state";
 import { ClientToServerEvents, User } from "./types";
 import { turnNumberToArrayOfU8Int } from "./utils";
 
-export function showRoom(roomId: "lobby" | "waiting-room" | "playing-room") {
+export function showRoom(
+    roomId: "lobby" | "waiting-room" | "playing-room" | "finished-room",
+) {
     const activeRoom = document.querySelector(
         ".rooms[data-current='true']",
     ) as HTMLElement;
@@ -164,9 +166,9 @@ export function setClientAsHostIfTrue() {
 
         hostBadge.setAttribute("data-host-badge", "");
         hostBadge.classList.add("badge");
-        hostBadge.textContent = "(host)";
+        hostBadge.textContent = "🜲";
 
-        userEl.appendChild(hostBadge);
+        userEl.querySelector(".user-metadata")!.appendChild(hostBadge);
     }
 
     return true;
@@ -177,31 +179,36 @@ export function addUserToListOfPlayersElement(user: User): void {
 
     li.id = `user-${user.id}`;
 
-    if (STATE.user?.id === user.id) {
-        const youBadge = document.createElement("span");
+    const metadataContainer = document.createElement("div");
 
-        youBadge.classList.add("badge");
-        youBadge.textContent = "(you)";
-
-        li.appendChild(youBadge);
-    }
+    metadataContainer.classList.add("user-metadata");
 
     const displayNameEl = document.createElement("div");
 
     displayNameEl.textContent = user.displayName;
 
-    li.appendChild(displayNameEl);
+    metadataContainer.appendChild(displayNameEl);
 
     if (user.id === STATE.room!.hostId) {
         const hostBadge = document.createElement("span");
 
         hostBadge.setAttribute("data-host-badge", "");
         hostBadge.classList.add("badge");
-        hostBadge.textContent = "(host)";
+        hostBadge.textContent = "🜲";
 
-        li.appendChild(hostBadge);
+        metadataContainer.appendChild(hostBadge);
     }
 
+    if (STATE.user?.id === user.id) {
+        const youBadge = document.createElement("sub");
+
+        youBadge.classList.add("badge");
+        youBadge.textContent = "(you)";
+
+        metadataContainer.appendChild(youBadge);
+    }
+
+    li.appendChild(metadataContainer);
     getListOfPlayersElement().appendChild(li);
 }
 
