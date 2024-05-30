@@ -1,0 +1,61 @@
+:root {
+    --_toastmynuts-tw: min(80vw, 25rem);
+
+    --clr-bg: 0 0% 98%;
+    --clr-fg: 0 0% 2%;
+
+    --clr-ctrl-outline: 207 98% 66%;
+
+    --clr-primary: 209 100% 70%;
+    --clr-secondary: 45 70% 60%;
+    --clr-accent: 356 100% 78%;
+
+    --max-content-width: 1400px;
+    --padding-inline: 1rem;
+
+    --space-1: 0.05em;
+    --space-2: calc(var(--space-1) + 0.25em);
+    --space-3: calc(var(--space-2) + 0.25em);
+    --space-4: calc(var(--space-3) + 0.25em);
+    --space-5: calc(var(--space-4) + 0.5em);
+    --space-6: calc(var(--space-5) + 0.5em);
+    --space-7: calc(var(--space-6) + 1em);
+    --space-8: calc(var(--space-7) + 1em);
+    --space-9: calc(var(--space-8) + 2em);
+    --space-10: calc(var(--space-9) + 2em);
+    --space-11: calc(var(--space-10) + 4em);
+    --space-12: calc(var(--space-11) + 4em);
+}
+
+body {
+    padding-block: var(--space-4);
+
+    min-height: 100dvh;
+}
+
+[hidden] {
+    display: none !important;
+}
+
+ul:not([role="list"]),
+ol:not([role="list"]) {
+    list-style-type: none;
+}
+
+.container {
+    width: min(calc(100% - var(--padding-inline) * 2), var(--max-content-width));
+
+    margin-inline: auto;
+}
+
+body {
+    display: grid;
+    place-items: center;
+
+    gap: var(--space-8);
+}
+
+svg {
+    width: 1.5rem;
+    height: 1.5rem;
+}

@@ -1,0 +1,87 @@
+button,
+input,
+a,
+textarea,
+select {
+    border-radius: var(--space-2);
+
+    transition-property: transform, box-shadow, border-color, color, background-color;
+    transition-duration: 0.25s;
+    transition-timing-function: ease;
+
+    will-change: transform, box-shadow, border-color, color, background-color;
+}
+
+button,
+a.btn {
+    padding: 0.5rem 0.75rem;
+    border: none;
+
+    outline: transparent;
+
+    background-color: transparent;
+
+    font-weight: 600;
+
+    min-width: 10ch;
+    min-height: 5ch;
+
+    cursor: pointer;
+}
+
+input {
+    padding: 0.5rem 1rem;
+
+    border: 1px solid black;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+a:focus-visible {
+    outline: transparent;
+
+    border-color: hsl(var(--clr-ctrl-outline));
+    box-shadow:
+        0px 1px 1px hsl(var(--clr-ctrl-outline) / 0.25),
+        0px 2px 2px hsl(var(--clr-ctrl-outline) / 0.25),
+        0px 4px 4px hsl(var(--clr-ctrl-outline) / 0.25),
+        0px 8px 8px hsl(var(--clr-ctrl-outline) / 0.25);
+}
+
+button:hover,
+a:hover,
+input[type="submit"],
+input[type="reset"] {
+    --_bg-opacity: 0.75;
+}
+
+button:disabled,
+a:disabled,
+input:disabled,
+textarea:disabled,
+select:disabled {
+    cursor: default !important;
+
+    --_bg-opacity: 0.5 !important;
+}
+
+button.primary,
+a.primary,
+input[type="submit"].primary,
+input[type="reset"].primary {
+    background-color: hsl(var(--clr-primary) / var(--_bg-opacity, 1));
+}
+
+button.secondary,
+a.secondary,
+input[type="submit"].secondary,
+input[type="submit"].secondary {
+    background-color: hsl(var(--clr-secondary) / var(--_bg-opacity, 1));
+}
+
+input:placeholder-shown,
+textarea:placeholder-shown {
+    font-weight: 600;
+    opacity: 0.87;
+}

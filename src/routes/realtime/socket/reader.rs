@@ -790,10 +790,6 @@ async fn on_tick(
             .unwrap(),
     );
 
-    if *time_left != 0 {
-        *time_left -= 1;
-    }
-
     if *time_left == 0 {
         if on_timer_reached_zero(room_id, room, users, server_messages, ticker_msg)
             .await?
@@ -808,6 +804,10 @@ async fn on_tick(
         }
 
         return Ok(WebSocketOperationResult::Break);
+    }
+
+    if *time_left != 0 {
+        *time_left -= 1;
     }
 
     Ok(WebSocketOperationResult::Continue)

@@ -7,112 +7,118 @@
 		<link rel="stylesheet" href="/dist/index.css">
 		<title>Skribbl</title>
 	</head>
-	<body>
+	<body class="container">
 		<noscript>
 			<h1>Skribbl requires JavaScript to run.</h1>
 		</noscript>
-		<div id="app">
-			<div class="main-container">
-				<ul id="list-of-players" hidden></ul>
-				<div class="rooms" id="lobby" data-current="true">
-					<div>
-						<form id="lobby-form" action novalidate>
-							<input
-								type="text"
-								id="display-name"
-								name="displayName"
-								placeholder="Display Name"
-								minlength="3"
-								maxlength="20"
-								required />
-							<input
-								type="hidden"
-								value="{{roomId}}"
-								id="room-id"
-								name="roomId"
-								readonly />
-						</form>
-						<div id="lobby-buttons-container">
-							<button type="button" id="play-btn">
-								Play
-							</button>
-							<button type="button" id="create-private-room-btn">
-								Create Private Room
-							</button>
-						</div>
-					</div>
-				</div>
-				<div class="rooms" id="waiting-room">
-					<div data-for-host="true">
-						<div data-waiting-text>
-							Waiting for players to join...
-						</div>
-						<button type="button" id="start-game-btn">
-							Start Game
-						</button>
-					</div>
-					<div data-for-players="true">
-						<div>
-							Waiting for host to start the game...
-						</div>
-					</div>
-				</div>
-				<div class="rooms" id="playing-room">
-					<div id="playing-room-header">
-						<div id="time-left"></div>
-						<div id="word-to-draw"></div>
-					</div>
-					<div id="playing-room-body">
-						<canvas id="drawing-canvas" width="1280" height="720"></canvas>
-						<div id="picking-a-word-modal">
-							<div data-for-user-to-draw="true">
-								<div>
-									<div class="title-md">Choose a word to draw</div>
-									<ul id="word-list"></ul>
-								</div>
-							</div>
-							<div data-for-user-to-draw="false">
-								<div>
-									<span id="user-to-draw-username">
-									</span>
-									is picking a word...
-								</div>
-							</div>
-						</div>
-					</div>
-				</div>
-				<div class="rooms" id="finished-room">
-					<button id="back-to-waiting">back to lobby</button>
-					<!-- TODO: Add rankings here -->
-				</div>
-
-				<div id="chat" hidden>
-					<ul id="list-of-chats"></ul>
-					<form id="chat-form" action novalidate>
-						<input
-							type="text"
-							autocomplete="off"
-							autocapitalize="off"
-							placeholder="Type in your message"
-							name="chat" />
-						<button>
-							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"
-								fill="currentColor" style="width: 16px; height: 16px;">
-								<path
-									d="M2.87 2.298a.75.75 0 0 0-.812 1.021L3.39 6.624a1 1 0 0 0 .928.626H8.25a.75.75 0 0 1 0 1.5H4.318a1 1 0 0 0-.927.626l-1.333 3.305a.75.75 0 0 0 .811 1.022 24.89 24.89 0 0 0 11.668-5.115.75.75 0 0 0 0-1.175A24.89 24.89 0 0 0 2.869 2.298Z" />
-							</svg>
-						</button>
-					</form>
-				</div>
-			</div>
-			<div id="room-link" hidden>
-				<div>
-					Share this link with your friends to invite them to this room:
-					<input type="text" id="room-link-input" readonly />
-					<button type="button" data-copy-btn="room-link-input">
-						Copy
+		<ul id="list-of-players" hidden></ul>
+		<div class="rooms" id="lobby">
+			<div>
+				<form id="lobby-form" action novalidate>
+					<input
+						type="text"
+						id="display-name"
+						name="displayName"
+						placeholder="Display Name"
+						minlength="3"
+						maxlength="20"
+						required />
+					<input
+						type="hidden"
+						value="{{roomId}}"
+						id="room-id"
+						name="roomId"
+						readonly />
+				</form>
+				<div id="lobby-buttons-container">
+					<button class="primary" type="button" id="play-btn">
+						Play!
+					</button>
+					<button class="secondary" type="button" id="create-private-room-btn">
+						Create Private Room
 					</button>
 				</div>
+			</div>
+		</div>
+		<div class="rooms" id="waiting-room" hidden>
+			<div data-for-host="true">
+				<div data-waiting-text>
+					Waiting for players to join...
+				</div>
+				<button type="button" id="start-game-btn">
+					Start Game
+				</button>
+			</div>
+			<div data-for-players="true">
+				<div>
+					Waiting for host to start the game...
+				</div>
+			</div>
+		</div>
+		<div class="rooms" id="playing-room" hidden>
+			<div id="playing-room-header">
+				<div id="time-left"></div>
+				<div id="word-to-draw"></div>
+			</div>
+			<div id="playing-room-body">
+				<canvas id="drawing-canvas" width="1280" height="720"></canvas>
+				<div id="picking-a-word-modal">
+					<div data-for-user-to-draw="true">
+						<div>
+							<div class="title-md">Choose a word to draw</div>
+							<ul id="word-list"></ul>
+						</div>
+					</div>
+					<div data-for-user-to-draw="false">
+						<div>
+							<span id="user-to-draw-username">
+							</span>
+							is picking a word...
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+		<div class="rooms" id="finished-room" hidden>
+			<button id="back-to-waiting">back to lobby</button>
+			<!-- TODO: Add rankings here -->
+		</div>
+
+		<div id="chat" hidden>
+			<ul id="list-of-chats"></ul>
+			<form id="chat-form" action novalidate>
+				<input
+					type="text"
+					autocomplete="off"
+					autocapitalize="off"
+					placeholder="Type in your message"
+					name="chat" />
+				<button>
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"
+						fill="currentColor" style="width: 16px; height: 16px;">
+						<path
+							d="M2.87 2.298a.75.75 0 0 0-.812 1.021L3.39 6.624a1 1 0 0 0 .928.626H8.25a.75.75 0 0 1 0 1.5H4.318a1 1 0 0 0-.927.626l-1.333 3.305a.75.75 0 0 0 .811 1.022 24.89 24.89 0 0 0 11.668-5.115.75.75 0 0 0 0-1.175A24.89 24.89 0 0 0 2.869 2.298Z" />
+					</svg>
+				</button>
+			</form>
+		</div>
+		<div id="room-link" hidden>
+			<div>
+				<div class="room-link-input-container">
+					<div class="room-link-overlay">
+						Hover over me to show the link to this room
+					</div>
+					<input type="text" id="room-link-input" readonly />
+				</div>
+				<button type="button" data-copy-btn="room-link-input">
+					<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="copy-icon">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z" />
+					</svg>
+					<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="check-icon">
+						<path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+					</svg>
+					</div>
+				</button>
 			</div>
 		</div>
 		<script src="/dist/index.js" type="module"></script>

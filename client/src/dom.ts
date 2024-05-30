@@ -1,17 +1,20 @@
 import { chatFormListener } from "./chats";
+import { toast } from "./lib/toast";
 import { STATE } from "./state";
 import { ClientToServerEvents, User } from "./types";
-import { turnNumberToArrayOfU8Int } from "./utils";
+import { assert, turnNumberToArrayOfU8Int } from "./utils";
 
 export function showRoom(
     roomId: "lobby" | "waiting-room" | "playing-room" | "finished-room",
 ) {
     const activeRoom = document.querySelector(
-        ".rooms[data-current='true']",
+        ".rooms:not([hidden])",
     ) as HTMLElement;
 
-    activeRoom.removeAttribute("data-current");
-    document.getElementById(roomId)!.setAttribute("data-current", "true");
+    console.log(activeRoom);
+
+    activeRoom.setAttribute("hidden", "");
+    document.getElementById(roomId)!.removeAttribute("hidden");
 }
 
 export function initializeWaitingRoom() {
@@ -176,17 +179,13 @@ export function setClientAsHostIfTrue() {
 
 export function addUserToListOfPlayersElement(user: User): void {
     const li = document.createElement("li");
+    const metadataContainer = document.createElement("div");
+    const displayNameEl = document.createElement("div");
+    const mainInfoContainer = document.createElement("div");
 
     li.id = `user-${user.id}`;
-
-    const metadataContainer = document.createElement("div");
-
     metadataContainer.classList.add("user-metadata");
-
-    const displayNameEl = document.createElement("div");
-
     displayNameEl.textContent = user.displayName;
-
     metadataContainer.appendChild(displayNameEl);
 
     if (user.id === STATE.room!.hostId) {
@@ -195,7 +194,6 @@ export function addUserToListOfPlayersElement(user: User): void {
         hostBadge.setAttribute("data-host-badge", "");
         hostBadge.classList.add("badge");
         hostBadge.textContent = "🜲";
-
         metadataContainer.appendChild(hostBadge);
     }
 
@@ -204,13 +202,23 @@ export function addUserToListOfPlayersElement(user: User): void {
 
         youBadge.classList.add("badge");
         youBadge.textContent = "(you)";
-
         metadataContainer.appendChild(youBadge);
     }
 
-    li.appendChild(metadataContainer);
+    const ranking = document.createElement("div");
+    const score = document.createElement("div");
+
+    ranking.textContent = `#${STATE.usersInRoom.length}`;
+    score.textContent = "0 points";
+    score.classList.add("score");
+    mainInfoContainer.appendChild(metadataContainer);
+    mainInfoContainer.appendChild(score);
+    li.appendChild(ranking);
+    li.appendChild(mainInfoContainer);
     getListOfPlayersElement().appendChild(li);
 }
+
+export function reorganizeRankingOfPlayers(): void {}
 
 export function removeUserFromListOfPlayersElement(userId: string): void {
     document.getElementById(`user-${userId}`)?.remove();
@@ -369,4 +377,63 @@ export function getChatForm(): HTMLFormElement {
     }
 
     return chatForm;
+}
+
+/**
+ * @param copying id of the element to copy
+ * @returns
+ */
+export function initializeCopyBtn(copying: string) {
+    const button = document.querySelector(
+        `[data-copy-btn=${copying}]`,
+    ) as HTMLButtonElement;
+    const inputToCopy = document.getElementById(copying) as
+        | HTMLInputElement
+        | HTMLTextAreaElement;
+    let timeout: number | undefined;
+
+    assert(
+        button !== null && button instanceof HTMLButtonElement,
+        `Copy button which targets element with id ${copying} does not exist nor an instance of HTMLButtonElement`,
+    );
+    assert(
+        inputToCopy !== null &&
+            (inputToCopy instanceof HTMLInputElement ||
+                inputToCopy instanceof HTMLTextAreaElement),
+        `Input to copy with id ${copying} is neither defined nor an instance of HTMLInputElement nor HTMLTextAreaElement`,
+    );
+
+    function onClick() {
+        navigator.clipboard
+            .writeText(inputToCopy.value)
+            .then(() => {
+                button.setAttribute("data-copied", "true");
+
+                if (timeout) {
+                    clearTimeout(timeout);
+                }
+
+                timeout = setTimeout(() => {
+                    button.removeAttribute("data-copied");
+                }, 2000);
+            })
+            .catch((err) => {
+                toast.error(err);
+            });
+    }
+
+    button.addEventListener("click", onClick);
+
+    return () => {
+        const button = document.querySelector(
+            `[data-copy-btn=${copying}]`,
+        ) as HTMLButtonElement;
+
+        assert(
+            button !== null && button instanceof HTMLButtonElement,
+            `Copy button which targets element with id ${copying} does not exist nor an instance of HTMLButtonElement`,
+        );
+
+        button.removeEventListener("click", onClick);
+    };
 }

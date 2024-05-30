@@ -1,2 +1,8 @@
-@import "./main.css";
+@import "./resets.css";
+@import "./root.css";
+@import "./controls.css";
+@import "./list-of-players.css";
+@import "./chat.css";
+@import "./room-link.css";
+@import "./room.css";
 @import "toastmynuts/styles.css";

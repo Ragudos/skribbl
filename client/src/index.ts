@@ -1,3 +1,4 @@
+import { initializeCopyBtn } from "./dom";
 import {
     createPrivateRoomBtnListener,
     playBtnListener,
@@ -11,4 +12,6 @@ function init() {
     playFormListener.listen();
     playBtnListener.listen();
     createPrivateRoomBtnListener.listen();
+
+    initializeCopyBtn("room-link-input");
 }

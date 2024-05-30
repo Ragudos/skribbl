@@ -1,4 +1,4 @@
-import { Room, PlayingState, User } from "./types";
+import { PlayingState, Room, User } from "./types";
 
 type DataTypes = {
     string: string;
@@ -65,22 +65,22 @@ export function parsePartOfBinaryData<K extends keyof DataTypes>(
 }
 
 export function turnNumberToArrayOfU8Int(num: number): Array<number> {
-	let amountLeft = num;
-	const arr: number[] = [];
+    let amountLeft = num;
+    const arr: number[] = [];
 
-	while (amountLeft !== 0) {
-		if (amountLeft < 255) {
-			const diff = amountLeft - amountLeft;
+    while (amountLeft !== 0) {
+        if (amountLeft < 255) {
+            const diff = amountLeft - amountLeft;
 
-			arr.push(amountLeft);
-			amountLeft = diff;
-		} else {
-			amountLeft -= 255;
-			arr.push(255);
-		}
-	}
+            arr.push(amountLeft);
+            amountLeft = diff;
+        } else {
+            amountLeft -= 255;
+            arr.push(255);
+        }
+    }
 
-	return arr;
+    return arr;
 }
 
 export function getApproximateCursorPositionInCanvas(
@@ -201,4 +201,12 @@ function parseObjAsPlayingStateObj(obj: unknown): obj is PlayingState {
     }
 
     return false;
+}
+
+export function assert(truthy: boolean, message: string | Error): void {
+    if (!truthy) {
+        debugger;
+
+        console.error(message);
+    }
 }

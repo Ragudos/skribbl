@@ -40,13 +40,6 @@ export type User = {
     displayName: string;
 };
 
-export type HandshakePayload = {
-    user: User;
-    room: Room;
-    usersInRoom: User[];
-    binaryProtocolVersion: number;
-};
-
 export type Socket =
     | {
           connectionState: "connecting" | "disconnected";
@@ -66,7 +59,7 @@ export type GameState = {
     socket: Socket;
     user: User | null;
     room: Room | null;
-    usersInRoom: User[];
+    usersInRoom: (User & { score?: number })[];
     binaryProtocolVersion: number | null;
     canvas: Canvas | null;
     wordListBtnListeners:

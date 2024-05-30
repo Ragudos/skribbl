@@ -1,0 +1,36 @@
+#lobby {
+    width: min(100%, calc(var(--max-content-width) / 4));
+}
+
+#lobby input {
+    width: 100%;
+}
+
+#lobby > div {
+    display: grid;
+    gap: var(--space-4);
+
+    padding-block: var(--space-5);
+    padding-inline: var(--space-4);
+
+    border-radius: var(--space-3);
+
+    background-color: hsl(var(--clr-accent) / 0.87);
+}
+
+#lobby-buttons-container {
+    display: grid;
+    gap: var(--space-3);
+}
+
+#lobby-buttons-container #play-btn {
+    font-size: 1.25em;
+
+    font-weight: 800;
+}
+
+body:has(#lobby[hidden]) {
+    grid-template-areas:
+        "players room chat"
+        "room-link room-link room-link";
+}

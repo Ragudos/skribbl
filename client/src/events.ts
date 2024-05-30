@@ -24,6 +24,7 @@ import { toast } from "./lib/toast";
 import { HTMLElementListener } from "./listener";
 import { STATE } from "./state";
 import {
+    assert,
     parseObjAsRoomObj,
     parseObjAsUserObj,
     parsePartOfBinaryData,
@@ -491,22 +492,21 @@ export function handleTick(data: Array<number>) {
 }
 
 export function handleAddScore(data: Array<number>) {
-    if (STATE.socket.connectionState !== "connected") {
-        throw new Error();
-    }
-
-    if (
-        !STATE.room ||
-        STATE.room.state === "waiting" ||
-        STATE.room.state === "finished" ||
-        !STATE.user ||
-        STATE.usersInRoom.length === 0
-    ) {
-        throw new Error();
-    }
+    assert(
+        STATE.socket.connectionState === "connected",
+        "Received `AddScore` event but `STATE.connectionState` is not `connected`",
+    );
 
     const userId = parsePartOfBinaryData(data, "string");
     const score = parsePartOfBinaryData(data, "int16");
+    const user = STATE.usersInRoom.find((user) => user.id === userId)!;
+
+    assert(
+        user !== undefined,
+        "User with id " + userId + " does not exist in state.",
+    );
+
+    user.score = score;
 }
 
 export function handleUserGuessed(data: Array<number>) {
