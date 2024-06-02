@@ -11,8 +11,6 @@ export function showRoom(
         ".rooms:not([hidden])",
     ) as HTMLElement;
 
-    console.log(activeRoom);
-
     activeRoom.setAttribute("hidden", "");
     document.getElementById(roomId)!.removeAttribute("hidden");
 }
@@ -208,7 +206,13 @@ export function addUserToListOfPlayersElement(user: User): void {
     const ranking = document.createElement("div");
     const score = document.createElement("div");
 
-    ranking.textContent = `#${STATE.usersInRoom.length}`;
+    assert(
+        user.ranking !== undefined,
+        "User object should have property `ranking`",
+    );
+
+    ranking.setAttribute("data-ranking", user.ranking!.toString());
+    ranking.classList.add("ranking");
     score.textContent = "0 points";
     score.classList.add("score");
     mainInfoContainer.appendChild(metadataContainer);
@@ -217,8 +221,6 @@ export function addUserToListOfPlayersElement(user: User): void {
     li.appendChild(mainInfoContainer);
     getListOfPlayersElement().appendChild(li);
 }
-
-export function reorganizeRankingOfPlayers(): void {}
 
 export function removeUserFromListOfPlayersElement(userId: string): void {
     document.getElementById(`user-${userId}`)?.remove();

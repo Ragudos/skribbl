@@ -29,8 +29,57 @@
     font-weight: 800;
 }
 
+body:has(#lobby[hidden]) .rooms {
+    grid-area: room;
+}
+
 body:has(#lobby[hidden]) {
     grid-template-areas:
-        "players room chat"
-        "room-link room-link room-link";
+        "room-link"
+        "room"
+        "chat"
+        "players";
+}
+
+@media only screen and (min-width: 640px) {
+    body:has(#lobby[hidden]) {
+        grid-template-areas:
+            "room room"
+            "room-link room-link"
+            "players chat";
+    }
+}
+
+@media only screen and (min-width: 1024px) {
+    body:has(#lobby[hidden]) {
+        grid-template-columns: 0.5fr 2fr 0.5fr;
+        grid-template-areas:
+            "players room chat"
+            "room-link room-link room-link";
+    }
+}
+
+.rooms {
+    aspect-ratio: 16 / 9;
+}
+
+#waiting-room {
+    text-align: center;
+
+    display: flex;
+    align-items: center;
+}
+
+#waiting-room > * {
+    width: 100%;
+}
+
+body:has([data-player-count="1"]) [data-for-host="true"] [data-waiting-text] {
+    display: block;
+}
+
+body[data-host="true"]:not(:has([data-player-count])) [data-for-host="true"] #start-game-btn,
+body[data-host="true"]:has([data-player-count="1"]) [data-for-host="true"] #start-game-btn,
+body:not(:has([data-player-count="1"])) [data-waiting-text] {
+    display: none;
 }

@@ -128,6 +128,13 @@ export function parseObjAsUserObj(obj: unknown): obj is User {
         return false;
     }
 
+    if (
+        ("score" in obj && typeof obj.score !== "number") ||
+        ("ranking" in obj && typeof obj.ranking !== "number")
+    ) {
+        return false;
+    }
+
     return (
         "id" in obj &&
         typeof obj.id === "string" &&

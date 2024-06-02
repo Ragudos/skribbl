@@ -38,6 +38,8 @@ export type Room = {
 export type User = {
     id: string;
     displayName: string;
+    score?: number;
+    ranking: number;
 };
 
 export type Socket =
@@ -59,7 +61,7 @@ export type GameState = {
     socket: Socket;
     user: User | null;
     room: Room | null;
-    usersInRoom: (User & { score?: number })[];
+    usersInRoom: User[];
     binaryProtocolVersion: number | null;
     canvas: Canvas | null;
     wordListBtnListeners:

@@ -56,6 +56,10 @@ export function handleUserJoined(data: Array<number>) {
     const userString = parsePartOfBinaryData(data, "string");
     const user = JSON.parse(userString);
 
+    if (user.ranking === undefined) {
+        user.ranking = STATE.usersInRoom.length + 1;
+    }
+
     if (!parseObjAsUserObj(user)) {
         throw new Error("Received invalid payload");
     }
@@ -86,6 +90,29 @@ export function handleUserLeft(data: Array<number>) {
         );
 
         return;
+    }
+
+    for (let i = 0; i < STATE.usersInRoom.length; ++i) {
+        if (
+            user.id === STATE.usersInRoom[i].id ||
+            user.ranking > STATE.usersInRoom[i].ranking
+        ) {
+            continue;
+        }
+
+        const rankingEl = document.querySelector(
+            `#user-${STATE.usersInRoom[i].id} .ranking`,
+        )!;
+
+        assert(
+            rankingEl !== null,
+            `Element with class \`ranking\` whose parent has id \`user-${STATE.usersInRoom[i].id}\` does not exist.`,
+        );
+
+        rankingEl.setAttribute(
+            "data-ranking",
+            (--STATE.usersInRoom[i].ranking).toString(),
+        );
     }
 
     STATE.usersInRoom.splice(userIdx, 1);
@@ -428,7 +455,9 @@ export function handleSendGameState(data: Array<number>) {
 
     const room = JSON.parse(roomString);
     const user = JSON.parse(userString);
-    const usersInRoom = JSON.parse(usersInRoomString);
+    const usersInRoom = JSON.parse(usersInRoomString).map(
+        (user: any, idx: number) => ({ ...user, ranking: idx + 1 }),
+    );
 
     if (
         !parseObjAsRoomObj(room) ||

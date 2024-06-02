@@ -25,16 +25,8 @@
     --space-10: calc(var(--space-9) + 2em);
     --space-11: calc(var(--space-10) + 4em);
     --space-12: calc(var(--space-11) + 4em);
-}
 
-body {
-    padding-block: var(--space-4);
-
-    min-height: 100dvh;
-}
-
-[hidden] {
-    display: none !important;
+    --canvas-width: 1280px;
 }
 
 ul:not([role="list"]),
@@ -53,9 +45,35 @@ body {
     place-items: center;
 
     gap: var(--space-8);
+
+    padding-block: var(--space-4);
+
+    min-height: 100dvh;
+}
+
+body > * {
+    width: 100%;
 }
 
 svg {
     width: 1.5rem;
     height: 1.5rem;
+}
+
+canvas {
+    width: min(100%, var(--canvas-width));
+
+    aspect-ratio: 16 / 9;
+
+    image-rendering: optimizeQuality;
+
+    touch-action: pinch-zoom;
+}
+
+[hidden],
+body:not([data-host="true"]) [data-for-host="true"],
+body[data-host="true"] [data-for-players="true"],
+body:not([data-user-to-draw="true"]) [data-for-user-to-draw="true"],
+body[data-user-to-draw="true"] [data-for-user-to-draw="false"] {
+    display: none !important;
 }
